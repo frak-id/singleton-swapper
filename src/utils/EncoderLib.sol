@@ -105,6 +105,21 @@ library EncoderLib {
         return self;
     }
 
+    function appendSendAll(bytes memory self, address token, address to) internal pure returns (bytes memory) {
+        uint256 op = Ops.SEND_ALL;
+        assembly {
+            let length := mload(self)
+            mstore(self, add(length, 41))
+            let initialOffset := add(add(self, 0x20), length)
+
+            mstore(initialOffset, shl(248, op))
+            mstore(add(initialOffset, 1), shl(96, token))
+            mstore(add(initialOffset, 21), shl(96, to))
+        }
+
+        return self;
+    }
+
     function appendReceive(bytes memory self, address token, uint256 amount) internal pure returns (bytes memory) {
         uint256 op = Ops.RECEIVE;
         assembly {
@@ -115,6 +130,20 @@ library EncoderLib {
             mstore(initialOffset, shl(248, op))
             mstore(add(initialOffset, 1), shl(96, token))
             mstore(add(initialOffset, 21), shl(128, amount))
+        }
+
+        return self;
+    }
+
+    function appendReceiveAll(bytes memory self, address token) internal pure returns (bytes memory) {
+        uint256 op = Ops.RECEIVE_ALL;
+        assembly {
+            let length := mload(self)
+            mstore(self, add(length, 21))
+            let initialOffset := add(add(self, 0x20), length)
+
+            mstore(initialOffset, shl(248, op))
+            mstore(add(initialOffset, 1), shl(96, token))
         }
 
         return self;

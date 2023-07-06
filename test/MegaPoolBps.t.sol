@@ -19,7 +19,8 @@ contract MegaPoolBpsTest is Test {
 
     MegaPool private pool;
 
-    uint256 private bps = 0.5e3;
+    // 0.5e3 = 0.5%
+    uint256 private bps = 1e3;
 
     function setUp() public {
         pool = new MegaPool(bps);
@@ -37,8 +38,8 @@ contract MegaPoolBpsTest is Test {
         address liquidityProvider = address(_newGiver("liquidityProvider"));
         address swapUser = address(_newGiver("swapUser"));
 
-        token0.mint(liquidityProvider, 100e18);
-        token1.mint(liquidityProvider, 100e18);
+        token0.mint(liquidityProvider, 10e18);
+        token1.mint(liquidityProvider, 10e18);
 
         // Append initial liquidity to the pool
         bytes memory program = EncoderLib.init(64).appendAddLiquidity(
@@ -48,17 +49,42 @@ contract MegaPoolBpsTest is Test {
         vm.prank(liquidityProvider);
         pool.execute(program);
 
-        (uint128 reserves0, uint128 reserves1, uint256 totalLiquidity) = pool.getPool(address(token0), address(token1));
-        console.log("=== Post add liquidity ===");
-        console.log("reserves0: %s", reserves0);
-        console.log("reserves1: %s", reserves1);
-        console.log("totalLiquidity: %s", totalLiquidity);
+        console.log("= Post add liquidity =");
+        _postSwapReserveLog(address(token0), address(token1));
         console.log("");
 
-        // Perform a first swap
+        // Perform a few swap
         token0.mint(swapUser, 0.1e18);
-        _swap0to1(address(token0), address(token1), swapUser, 0.1e18);
-        _swap1to0(address(token0), address(token1), swapUser, 0.09e18);
+        _swap0to1(address(token0), address(token1), swapUser, token0.balanceOf(swapUser));
+        _swap1to0(address(token0), address(token1), swapUser, token1.balanceOf(swapUser));
+        _swap0to1(address(token0), address(token1), swapUser, token0.balanceOf(swapUser));
+        _swap1to0(address(token0), address(token1), swapUser, token1.balanceOf(swapUser));
+
+        // Perform a few unilateral swap
+        token1.mint(swapUser, 20e18);
+        _swap1to0(address(token0), address(token1), swapUser, 5e18);
+        _swap1to0(address(token0), address(token1), swapUser, 5e18);
+        _swap1to0(address(token0), address(token1), swapUser, 5e18);
+        _swap1to0(address(token0), address(token1), swapUser, 5e18);
+
+        // Perform a few other unilateral swap
+        token0.mint(swapUser, 20e18);
+        _swap0to1(address(token0), address(token1), swapUser, 5e18);
+        _swap0to1(address(token0), address(token1), swapUser, 5e18);
+        _swap0to1(address(token0), address(token1), swapUser, 5e18);
+        _swap0to1(address(token0), address(token1), swapUser, 5e18);
+
+        // Tell the liquidityProvider to withdraw of all his founds
+        program = EncoderLib.init(64).appendRemoveLiquidity(address(token0), address(token1), 10e18).appendSendAll(
+            address(token0), liquidityProvider
+        ).appendSendAll(address(token1), liquidityProvider).done();
+        vm.prank(liquidityProvider);
+        pool.execute(program);
+
+        // Ensure all the liquidity as been drained
+        console.log("= Post remove liquidity =");
+        _postSwapReserveLog(address(token0), address(token1));
+        console.log("");
     }
 
     function _swap0to1(address token0, address token1, address user, uint256 toSwap) internal {
@@ -111,13 +137,13 @@ contract MegaPoolBpsTest is Test {
         console.log("");
     }
 
-    function _postSwapAmountLog(uint256 in, uint256 out) internal {
+    function _postSwapAmountLog(uint256 inAmount, uint256 outAmount) internal view {
         console.log("=== Swap ===");
-        console.log(" inAmount: %s", in);
-        console.log("outAmount: %s", out);
+        console.log(" inAmount: %s", inAmount);
+        console.log("outAmount: %s", outAmount);
     }
 
-    function _postSwapReserveLog(address token0, address token1) internal {
+    function _postSwapReserveLog(address token0, address token1) internal view {
         (uint128 reserves0, uint128 reserves1, uint256 totalLiquidity) = pool.getPool(token0, token1);
         console.log("=== Pool ===");
         console.log("reserves0: %s", reserves0);
@@ -125,7 +151,7 @@ contract MegaPoolBpsTest is Test {
         console.log("totalLiquidity: %s", totalLiquidity);
     }
 
-    function _postSwapBalanceLog(address token0, address token1, address user) internal {
+    function _postSwapBalanceLog(address token0, address token1, address user) internal view {
         console.log("=== User Balances ===");
         console.log("token0: %s", ERC20(token0).balanceOf(user));
         console.log("token1: %s", ERC20(token1).balanceOf(user));
