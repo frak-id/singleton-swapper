@@ -10,17 +10,28 @@ import {Ops} from "./Ops.sol";
 
 import {IGiver} from "./interfaces/IGiver.sol";
 
+/// @title MegaPool
 /// @author philogy <https://github.com/philogy>
+/// @author KONFeature <https://github.com/KONFeature>
+/// @notice The multi pool contract that handles all the pools and their actions
 contract MegaPool {
     using SafeTransferLib for address;
     using SafeCastLib for uint256;
+
+    /* -------------------------------------------------------------------------- */
+    /*                                   Storage                                  */
+    /* -------------------------------------------------------------------------- */
 
     uint256 public immutable FEE_BPS;
 
     uint256 internal reentrancyLock = 1;
 
-    mapping(address => Pool) internal pools;
-    mapping(address => uint256) public totalReservesOf;
+    mapping(address poolKey => Pool pool) internal pools;
+    mapping(address poolKey => uint256 totalReserve) public totalReservesOf;
+
+    /* -------------------------------------------------------------------------- */
+    /*                               Custom error's                               */
+    /* -------------------------------------------------------------------------- */
 
     error InvalidTokens();
     error InvalidOp(uint256 op);
@@ -38,17 +49,32 @@ contract MegaPool {
     modifier nonReentrant() {
         require(reentrancyLock == 1);
         reentrancyLock = 2;
-
         _;
-
         reentrancyLock = 1;
     }
 
+    /**
+     * @notice In memory state to handle the accounting for the execution of a program.
+     */
     struct State {
         Accounter tokenDeltas;
         address lastToken;
     }
 
+    /* -------------------------------------------------------------------------- */
+    /*                           External write method's                          */
+    /* -------------------------------------------------------------------------- */
+
+    /**
+     * @notice Execute a program of operations on pools. The `program` is a serialized list of operations, encoded in a specific format.
+     * @dev This function uses a non-ABI encoding to ensure a custom set of operations, each taking on a different amount of data while keeping calldata size minimal. It is not reentrant.
+     * @param program Serialized list of operations, with each operation consisting of an 8-bit operation specifier and parameters. The structure is as follows:
+     *  2 bytes: accounting hash map size (in tokens) e.g. 0x0040 => up to 64 key, value pairs in the accounting map
+     *  For every operation:
+     *    1 byte:  8-bit operation (4-bits operation id and 4-bits flags)
+     *    n bytes: opcode data
+     * Refer to the function documentation for details on individual operations.
+     */
     function execute(bytes calldata program) external nonReentrant {
         (uint256 ptr, uint256 endPtr) = _getPc(program);
 
@@ -71,20 +97,9 @@ contract MegaPool {
         if (state.tokenDeltas.totalNonZero != 0) revert LeftoverDelta();
     }
 
-    function getPool(address token0, address token1)
-        external
-        view
-        returns (uint128 reserves0, uint128 reserves1, uint256 totalLiquidity)
-    {
-        Pool storage pool = _getPool(token0, token1);
-        reserves0 = pool.reserves0;
-        reserves1 = pool.reserves1;
-        totalLiquidity = pool.totalLiquidity;
-    }
-
-    function getPosition(address token0, address token1, address owner) external view returns (uint256) {
-        return _getPool(token0, token1).positions[owner];
-    }
+    /* -------------------------------------------------------------------------- */
+    /*                           Internal write method's                          */
+    /* -------------------------------------------------------------------------- */
 
     function _interpretOp(State memory state, uint256 ptr, uint256 op) internal returns (uint256) {
         uint256 mop = op & Ops.MASK_OP;
@@ -302,6 +317,45 @@ contract MegaPool {
         return ptr;
     }
 
+    function _receive(State memory state, address token, uint256 amount) internal {
+        if (IGiver(msg.sender).give(token, amount) != IGiver.give.selector) {
+            revert InvalidGive();
+        }
+        _accountReceived(state, token);
+    }
+
+    function _accountReceived(State memory state, address token) internal {
+        uint256 reserves = totalReservesOf[token];
+        uint256 directBalance = token.balanceOf(address(this));
+        uint256 totalReceived = directBalance - reserves;
+
+        state.tokenDeltas.accountChange(token, -totalReceived.toInt256());
+        totalReservesOf[token] = directBalance;
+    }
+
+    /* -------------------------------------------------------------------------- */
+    /*                           External view method's                           */
+    /* -------------------------------------------------------------------------- */
+
+    function getPool(address token0, address token1)
+        external
+        view
+        returns (uint128 reserves0, uint128 reserves1, uint256 totalLiquidity)
+    {
+        Pool storage pool = _getPool(token0, token1);
+        reserves0 = pool.reserves0;
+        reserves1 = pool.reserves1;
+        totalLiquidity = pool.totalLiquidity;
+    }
+
+    function getPosition(address token0, address token1, address owner) external view returns (uint256) {
+        return _getPool(token0, token1).positions[owner];
+    }
+
+    /* -------------------------------------------------------------------------- */
+    /*                        Internal pure helper method's                       */
+    /* -------------------------------------------------------------------------- */
+
     function _readAddress(uint256 ptr) internal pure returns (uint256 newPtr, address addr) {
         uint256 rawVal;
         (newPtr, rawVal) = _readUint(ptr, 20);
@@ -321,22 +375,6 @@ contract MegaPool {
             ptr := program.offset
             endPtr := add(ptr, program.length)
         }
-    }
-
-    function _receive(State memory state, address token, uint256 amount) internal {
-        if (IGiver(msg.sender).give(token, amount) != IGiver.give.selector) {
-            revert InvalidGive();
-        }
-        _accountReceived(state, token);
-    }
-
-    function _accountReceived(State memory state, address token) internal {
-        uint256 reserves = totalReservesOf[token];
-        uint256 directBalance = token.balanceOf(address(this));
-        uint256 totalReceived = directBalance - reserves;
-
-        state.tokenDeltas.accountChange(token, -totalReceived.toInt256());
-        totalReservesOf[token] = directBalance;
     }
 
     function _getPool(address token0, address token1) internal pure returns (Pool storage pool) {
