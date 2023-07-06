@@ -38,13 +38,17 @@ contract MegaPoolBpsTest is Test {
         address liquidityProvider = address(_newGiver("liquidityProvider"));
         address swapUser = address(_newGiver("swapUser"));
 
-        token0.mint(liquidityProvider, 10e18);
-        token1.mint(liquidityProvider, 10e18);
+        uint256 initialDepositToken0 = 10e18;
+        uint256 initialDepositToken1 = 10e18;
+
+        token0.mint(liquidityProvider, initialDepositToken0);
+        token1.mint(liquidityProvider, initialDepositToken1);
 
         // Append initial liquidity to the pool
         bytes memory program = EncoderLib.init(64).appendAddLiquidity(
-            address(token0), address(token1), liquidityProvider, 10e18, 10e18
-        ).appendReceive(address(token0), 10e18).appendReceive(address(token1), 10e18).done();
+            address(token0), address(token1), liquidityProvider, initialDepositToken0, initialDepositToken1
+        ).appendReceive(address(token0), initialDepositToken0).appendReceive(address(token1), initialDepositToken1).done(
+        );
 
         vm.prank(liquidityProvider);
         pool.execute(program);
@@ -81,10 +85,20 @@ contract MegaPoolBpsTest is Test {
         vm.prank(liquidityProvider);
         pool.execute(program);
 
-        // Ensure all the liquidity as been drained
+        // Log the final state
         console.log("= Post remove liquidity =");
         _postSwapReserveLog(address(token0), address(token1));
         console.log("");
+
+        // Ensure that the liquidity provider has all his founds
+        uint256 newBalanceToken0 = token0.balanceOf(liquidityProvider);
+        uint256 newBalanceToken1 = token1.balanceOf(liquidityProvider);
+        console.log("liquidity provider new global balance: %s", newBalanceToken0 + newBalanceToken1);
+        console.log(
+            "liquidity provider profit: %s",
+            (newBalanceToken0 + newBalanceToken1) - (initialDepositToken0 + initialDepositToken1)
+        );
+        assertGt(newBalanceToken0 + newBalanceToken1, initialDepositToken0 + initialDepositToken1);
     }
 
     function _swap0to1(address token0, address token1, address user, uint256 toSwap) internal {
