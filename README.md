@@ -1,5 +1,7 @@
 # Singleton Swapper
 
+[Original POC by Philogy](https://github.com/Philogy/singleton-swapper)
+
 "Singleton Swapper" is a Singleton AMM, whereby liquidity pools all live under the same address. The pools use
 a simple constant-product formula ($k = x\cdot y$). This repo serves as a proof-of-concept to see
 how low the gas costs of a singleton AMM can be pushed and to experiment with an in-memory flash
