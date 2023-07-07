@@ -188,4 +188,24 @@ library MonoOpEncoderLib {
 
         return self;
     }
+
+    /**
+     * @notice Appends the pull all operation to the encoded operations
+     * @param self The encoded operations
+     * @param token The token that was sent by the user
+     * @return The updated encoded operations
+     */
+    function appendPullAll(bytes memory self, address token) internal pure returns (bytes memory) {
+        uint256 op = Ops.PULL_ALL;
+        assembly ("memory-safe") {
+            let length := mload(self)
+            mstore(self, add(length, 21))
+            let initialOffset := add(add(self, 0x20), length)
+
+            mstore(initialOffset, shl(248, op))
+            mstore(add(initialOffset, 1), shl(96, token))
+        }
+
+        return self;
+    }
 }
