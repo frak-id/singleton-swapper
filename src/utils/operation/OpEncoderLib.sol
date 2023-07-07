@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {Ops} from "../Ops.sol";
+import {Ops} from "../../Ops.sol";
 
+/// @title OpEncoderLib
 /// @author philogy <https://github.com/philogy>
-library EncoderLib {
+/// @author KONFeature <https://github.com/KONFeature>
+/// @notice Library for decoding operations
+library OpEncoderLib {
     function init(uint256 hashMapSize) internal pure returns (bytes memory program) {
         require(hashMapSize <= 0xffff);
         assembly {

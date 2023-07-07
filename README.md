@@ -43,7 +43,7 @@ taking on a different amount of data while keeping calldata size minimal.
 Each 8-bit operation specifier consists of `<4-bits operation id><4-bits flags>`. So there can be up
 to 16 top-level operations which each being to interpret 4 added flags.
 Parameters are always tightly packed. You can see how to encode individual ops in the
-[`EncoderLib`](src/utils/EncoderLib.sol).
+[`EncoderLib`](src/utils/operation/EncoderLib.sol).
 
 Note: The name of the ops are given from the perspective from the pool e.g. "send" means that from
 the perspective of the pool it's sending assets to some external recipient.

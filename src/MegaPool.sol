@@ -9,22 +9,23 @@ import {BPS} from "./libs/SwapLib.sol";
 import {Ops} from "./Ops.sol";
 
 import {IGiver} from "./interfaces/IGiver.sol";
+import {ReentrancyGuard} from "./utils/ReentrancyGuard.sol";
+import {OpDecoderLib} from "./utils/operation/OpDecoderLib.sol";
 
 /// @title MegaPool
 /// @author philogy <https://github.com/philogy>
 /// @author KONFeature <https://github.com/KONFeature>
 /// @notice The multi pool contract that handles all the pools and their actions
-contract MegaPool {
+contract MegaPool is ReentrancyGuard {
     using SafeTransferLib for address;
     using SafeCastLib for uint256;
+    using OpDecoderLib for uint256;
 
     /* -------------------------------------------------------------------------- */
     /*                                   Storage                                  */
     /* -------------------------------------------------------------------------- */
 
     uint256 public immutable FEE_BPS;
-
-    uint256 internal reentrancyLock = 1;
 
     mapping(address poolKey => Pool pool) internal pools;
     mapping(address poolKey => uint256 totalReserve) public totalReservesOf;
@@ -44,13 +45,6 @@ contract MegaPool {
     constructor(uint256 feeBps) {
         require(feeBps < BPS);
         FEE_BPS = feeBps;
-    }
-
-    modifier nonReentrant() {
-        require(reentrancyLock == 1);
-        reentrancyLock = 2;
-        _;
-        reentrancyLock = 1;
     }
 
     /**
@@ -81,14 +75,14 @@ contract MegaPool {
         State memory state;
         {
             uint256 hashMapSize;
-            (ptr, hashMapSize) = _readUint(ptr, 2);
+            (ptr, hashMapSize) = ptr.readUint(2);
             state.tokenDeltas.init(hashMapSize);
         }
 
         uint256 op;
         while (ptr < endPtr) {
             unchecked {
-                (ptr, op) = _readUint(ptr, 1);
+                (ptr, op) = ptr.readUint(1);
 
                 ptr = _interpretOp(state, ptr, op);
             }
@@ -134,10 +128,10 @@ contract MegaPool {
         address token0;
         address token1;
         uint256 amount;
-        (ptr, token0) = _readAddress(ptr);
-        (ptr, token1) = _readAddress(ptr);
+        (ptr, token0) = ptr.readAddress();
+        (ptr, token1) = ptr.readAddress();
         bool zeroForOne = (op & Ops.SWAP_DIR) != 0;
-        (ptr, amount) = _readUint(ptr, 16);
+        (ptr, amount) = ptr.readUint(16);
 
         (int256 delta0, int256 delta1) = _getPool(token0, token1).swap(zeroForOne, amount, FEE_BPS);
 
@@ -153,11 +147,11 @@ contract MegaPool {
         address to;
         uint256 maxAmount0;
         uint256 maxAmount1;
-        (ptr, token0) = _readAddress(ptr);
-        (ptr, token1) = _readAddress(ptr);
-        (ptr, to) = _readAddress(ptr);
-        (ptr, maxAmount0) = _readUint(ptr, 16);
-        (ptr, maxAmount1) = _readUint(ptr, 16);
+        (ptr, token0) = ptr.readAddress();
+        (ptr, token1) = ptr.readAddress();
+        (ptr, to) = ptr.readAddress();
+        (ptr, maxAmount0) = ptr.readUint(16);
+        (ptr, maxAmount1) = ptr.readUint(16);
 
         (, int256 delta0, int256 delta1) = _getPool(token0, token1).addLiquidity(to, maxAmount0, maxAmount1);
 
@@ -171,9 +165,9 @@ contract MegaPool {
         address token0;
         address token1;
         uint256 liq;
-        (ptr, token0) = _readAddress(ptr);
-        (ptr, token1) = _readAddress(ptr);
-        (ptr, liq) = _readUint(ptr, 32);
+        (ptr, token0) = ptr.readAddress();
+        (ptr, token1) = ptr.readAddress();
+        (ptr, liq) = ptr.readUint(32);
 
         (int256 delta0, int256 delta1) = _getPool(token0, token1).removeLiquidity(msg.sender, liq);
 
@@ -188,9 +182,9 @@ contract MegaPool {
         address to;
         uint256 amount;
 
-        (ptr, token) = _readAddress(ptr);
-        (ptr, to) = _readAddress(ptr);
-        (ptr, amount) = _readUint(ptr, 16);
+        (ptr, token) = ptr.readAddress();
+        (ptr, to) = ptr.readAddress();
+        (ptr, amount) = ptr.readUint(16);
 
         state.tokenDeltas.accountChange(token, amount.toInt256());
         token.safeTransfer(to, amount);
@@ -203,8 +197,8 @@ contract MegaPool {
         address token;
         uint256 amount;
 
-        (ptr, token) = _readAddress(ptr);
-        (ptr, amount) = _readUint(ptr, 16);
+        (ptr, token) = ptr.readAddress();
+        (ptr, amount) = ptr.readUint(16);
 
         _receive(state, token, amount);
 
@@ -215,9 +209,9 @@ contract MegaPool {
         address token0;
         address token1;
         uint256 amount;
-        (ptr, token0) = _readAddress(ptr);
-        (ptr, token1) = _readAddress(ptr);
-        (ptr, amount) = _readUint(ptr, 16);
+        (ptr, token0) = ptr.readAddress();
+        (ptr, token1) = ptr.readAddress();
+        (ptr, amount) = ptr.readUint(16);
 
         bool zeroForOne = (op & Ops.SWAP_DIR) != 0;
 
@@ -233,7 +227,7 @@ contract MegaPool {
     function _swapHop(State memory state, uint256 ptr) internal returns (uint256) {
         address lastToken = state.lastToken;
         address nextToken;
-        (ptr, nextToken) = _readAddress(ptr);
+        (ptr, nextToken) = ptr.readAddress();
 
         (address token0, address token1, bool zeroForOne) =
             nextToken > lastToken ? (lastToken, nextToken, true) : (nextToken, lastToken, false);
@@ -252,20 +246,20 @@ contract MegaPool {
         address token;
         address to;
 
-        (ptr, token) = _readAddress(ptr);
+        (ptr, token) = ptr.readAddress();
         int256 delta = state.tokenDeltas.resetChange(token);
         if (delta > 0) revert NegativeAmount();
 
         uint256 minSend = 0;
         uint256 maxSend = type(uint128).max;
 
-        if (op & Ops.ALL_MIN_BOUND != 0) (ptr, minSend) = _readUint(ptr, 16);
-        if (op & Ops.ALL_MAX_BOUND != 0) (ptr, maxSend) = _readUint(ptr, 16);
+        if (op & Ops.ALL_MIN_BOUND != 0) (ptr, minSend) = ptr.readUint(16);
+        if (op & Ops.ALL_MAX_BOUND != 0) (ptr, maxSend) = ptr.readUint(16);
 
         uint256 amount = uint256(-delta);
         if (amount < minSend || amount > maxSend) revert AmountOutsideBounds();
 
-        (ptr, to) = _readAddress(ptr);
+        (ptr, to) = ptr.readAddress();
         totalReservesOf[token] -= amount;
         token.safeTransfer(to, amount);
 
@@ -275,13 +269,13 @@ contract MegaPool {
     function _receiveAll(State memory state, uint256 ptr, uint256 op) internal returns (uint256) {
         address token;
 
-        (ptr, token) = _readAddress(ptr);
+        (ptr, token) = ptr.readAddress();
 
         uint256 minReceive = 0;
         uint256 maxReceive = type(uint128).max;
 
-        if (op & Ops.ALL_MIN_BOUND != 0) (ptr, minReceive) = _readUint(ptr, 16);
-        if (op & Ops.ALL_MAX_BOUND != 0) (ptr, maxReceive) = _readUint(ptr, 16);
+        if (op & Ops.ALL_MIN_BOUND != 0) (ptr, minReceive) = ptr.readUint(16);
+        if (op & Ops.ALL_MAX_BOUND != 0) (ptr, maxReceive) = ptr.readUint(16);
 
         int256 delta = state.tokenDeltas.getChange(token);
         if (delta < 0) revert NegativeReceive();
@@ -297,13 +291,13 @@ contract MegaPool {
     function _pullAll(State memory state, uint256 ptr, uint256 op) internal returns (uint256) {
         address token;
 
-        (ptr, token) = _readAddress(ptr);
+        (ptr, token) = ptr.readAddress();
 
         uint256 minReceive = 0;
         uint256 maxReceive = type(uint128).max;
 
-        if (op & Ops.ALL_MIN_BOUND != 0) (ptr, minReceive) = _readUint(ptr, 16);
-        if (op & Ops.ALL_MAX_BOUND != 0) (ptr, maxReceive) = _readUint(ptr, 16);
+        if (op & Ops.ALL_MIN_BOUND != 0) (ptr, minReceive) = ptr.readUint(16);
+        if (op & Ops.ALL_MAX_BOUND != 0) (ptr, maxReceive) = ptr.readUint(16);
 
         int256 delta = state.tokenDeltas.getChange(token);
         if (delta < 0) revert NegativeReceive();
@@ -355,20 +349,6 @@ contract MegaPool {
     /* -------------------------------------------------------------------------- */
     /*                        Internal pure helper method's                       */
     /* -------------------------------------------------------------------------- */
-
-    function _readAddress(uint256 ptr) internal pure returns (uint256 newPtr, address addr) {
-        uint256 rawVal;
-        (newPtr, rawVal) = _readUint(ptr, 20);
-        addr = address(uint160(rawVal));
-    }
-
-    function _readUint(uint256 ptr, uint256 size) internal pure returns (uint256 newPtr, uint256 x) {
-        require(size >= 1 && size <= 32);
-        assembly {
-            newPtr := add(ptr, size)
-            x := shr(shl(3, sub(32, size)), calldataload(ptr))
-        }
-    }
 
     function _getPc(bytes calldata program) internal pure returns (uint256 ptr, uint256 endPtr) {
         assembly {

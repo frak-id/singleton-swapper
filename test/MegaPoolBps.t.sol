@@ -4,7 +4,7 @@ pragma solidity 0.8.20;
 import "forge-std/console.sol";
 import {Test} from "forge-std/Test.sol";
 import {MegaPool} from "src/MegaPool.sol";
-import {EncoderLib} from "src/utils/EncoderLib.sol";
+import {OpEncoderLib} from "../src/utils/operation/OpEncoderLib.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {MockERC20} from "./mock/MockERC20.sol";
 import {ERC20} from "openzeppelin/token/ERC20/ERC20.sol";
@@ -15,7 +15,7 @@ import {MockGiver} from "./mock/MockGiver.sol";
 /// @notice Test contract for MegaPool with a BPS value
 contract MegaPoolBpsTest is Test {
     using SafeTransferLib for address;
-    using EncoderLib for bytes;
+    using OpEncoderLib for bytes;
 
     MegaPool private pool;
 
@@ -44,8 +44,19 @@ contract MegaPoolBpsTest is Test {
         token0.mint(liquidityProvider, initialDepositToken0);
         token1.mint(liquidityProvider, initialDepositToken1);
 
+        // 64 map size
+        // | execute                            | 13914           | 31572 | 22205  | 139656 | 14      |
+        // 32 map size
+        // | execute                            | 13585           | 31202 | 21835  | 139327 | 14      |
+        // 16 map size
+        // | execute                            | 13425           | 31022 | 21655  | 139167 | 14      |
+        // 2 map size
+        // | execute                            | 13288           | 30868 | 21501  | 139030 | 14      |
+        // 4 map size (seems enough for single swap OP)
+        // | execute                            | 13308           | 30889 | 21523  | 139049 | 14      |
+
         // Append initial liquidity to the pool
-        bytes memory program = EncoderLib.init(64).appendAddLiquidity(
+        bytes memory program = OpEncoderLib.init(4).appendAddLiquidity(
             address(token0), address(token1), liquidityProvider, initialDepositToken0, initialDepositToken1
         ).appendReceive(address(token0), initialDepositToken0).appendReceive(address(token1), initialDepositToken1).done(
         );
@@ -79,7 +90,7 @@ contract MegaPoolBpsTest is Test {
         _swap0to1(address(token0), address(token1), swapUser, 5e18);
 
         // Tell the liquidityProvider to withdraw of all his founds
-        program = EncoderLib.init(64).appendRemoveLiquidity(address(token0), address(token1), 10e18).appendSendAll(
+        program = OpEncoderLib.init(4).appendRemoveLiquidity(address(token0), address(token1), 10e18).appendSendAll(
             address(token0), liquidityProvider
         ).appendSendAll(address(token1), liquidityProvider).done();
         vm.prank(liquidityProvider);
@@ -111,7 +122,7 @@ contract MegaPoolBpsTest is Test {
         uint256 outAmount = reserves1 - (reserves0 * reserves1) / (reserves0 + inAmount * (1e4 - bps) / 1e4);
 
         // Build the swap op
-        bytes memory operations = EncoderLib.init(64).appendSwap(token0, token1, true, inAmount).appendReceive(
+        bytes memory operations = OpEncoderLib.init(4).appendSwap(token0, token1, true, inAmount).appendReceive(
             token0, inAmount
         ).appendSend(token1, user, outAmount).done();
 
@@ -137,7 +148,7 @@ contract MegaPoolBpsTest is Test {
         uint256 outAmount = reserves0 - (reserves0 * reserves1) / (reserves1 + inAmount * (1e4 - bps) / 1e4);
 
         // Build the swap op
-        bytes memory operations = EncoderLib.init(64).appendSwap(token0, token1, false, inAmount).appendReceive(
+        bytes memory operations = OpEncoderLib.init(4).appendSwap(token0, token1, false, inAmount).appendReceive(
             token1, inAmount
         ).appendSend(token0, user, outAmount).done();
         vm.prank(user);
