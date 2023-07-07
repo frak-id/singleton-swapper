@@ -1,34 +1,62 @@
-name: test
+name: 🧪 Smart contract tests
 
-on: workflow_dispatch
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
 
 env:
   FOUNDRY_PROFILE: ci
 
 jobs:
-  check:
-    strategy:
-      fail-fast: true
-
-    name: Foundry project
+  test:
+    name: Singleton swapper test
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v3
         with:
           submodules: recursive
-
-      - name: Install Foundry
+      - name: '🔨 Install Foundry'
         uses: foundry-rs/foundry-toolchain@v1
         with:
           version: nightly
 
-      - name: Run Forge build
-        run: |
-          forge --version
-          forge build --sizes
-        id: build
+      - name: '💾 Foundry fork cache'
+        uses: actions/cache@v3
+        with:
+          path: "~/.foundry/cache"
+          key: foundry-${{ hashFiles('Makefile', 'foundry.toml') }} # where fork block numbers & RPC are stored
 
-      - name: Run Forge tests
-        run: |
-          forge test -vvv
-        id: test
+      - name: '💾 Foundry compilation cache'
+        uses: actions/cache@v3
+        with:
+          path: |
+            cache
+            out
+          key: ${{ github.base_ref || github.ref_name }}-foundry
+
+      - name: '🧪 Run forge tests'
+        run: forge test --gas-report > gasreport.ansi
+
+      - name: '📈 Compare gas reports'
+        uses: Rubilmax/foundry-gas-diff@v3.15
+        with:
+          summaryQuantile: 0.9 # only display the 10% most significant gas diffs in the summary (defaults to 20%)
+          ignore: test/**/*
+          header: |
+            # Frak gas diffs
+        id: gas_diff
+
+      - name: '📝 Add gas diff to sticky comment'
+        if: github.event_name == 'pull_request' || github.event_name == 'pull_request_target'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          # delete the comment in case changes no longer impact gas costs
+          delete: ${{ !steps.gas_diff.outputs.markdown }}
+          message: ${{ steps.gas_diff.outputs.markdown }}
+
+      - name: '📈 Run snapshot'
+        run: forge snapshot

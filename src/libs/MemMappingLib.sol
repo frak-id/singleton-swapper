@@ -9,6 +9,9 @@ using MemMappingLib for MemMapping global;
 using MemMappingLib for MapKVPair global;
 
 /// @author philogy <https://github.com/philogy>
+/// @notice In memory map of key value pair
+/// @dev Store, from the first free mem pointer, on 32 bytes, key-value-key-value-key-value...
+/// @dev The free mem pointer is moved after the the mam allocated size (defined during the init)
 library MemMappingLib {
     function init(uint256 z) internal pure returns (MemMapping map) {
         assembly {

@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.19;
+pragma solidity 0.8.20;
 
 import {Test} from "forge-std/Test.sol";
 import {MegaPool} from "src/MegaPool.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {MockERC20} from "./mock/MockERC20.sol";
 import {IGiver} from "src/interfaces/IGiver.sol";
-import {EncoderLib} from "src/utils/EncoderLib.sol";
+import {OpEncoderLib} from "../src/utils/operation/OpEncoderLib.sol";
 
 /// @author philogy <https://github.com/philogy>
 contract MegaPoolTest is Test, IGiver {
     using SafeTransferLib for address;
-    using EncoderLib for bytes;
+    using OpEncoderLib for bytes;
 
     MegaPool pool;
 
@@ -32,7 +32,7 @@ contract MegaPoolTest is Test, IGiver {
         uint256 startY = 10e18;
 
         // forgefmt: disable-next-item
-        bytes memory program = EncoderLib.init(64)
+        bytes memory program = OpEncoderLib.init(64)
             .appendAddLiquidity(address(token0), address(token1), address(this), 10e18, 10e18)
             .appendReceive(address(token0), 10e18)
             .appendReceive(address(token1), 10e18)
@@ -44,7 +44,7 @@ contract MegaPoolTest is Test, IGiver {
         uint256 outAmount = startY - (startX * startY) / (startX + inAmount);
 
         // forgefmt: disable-next-item
-        program = EncoderLib.init(64)
+        program = OpEncoderLib.init(64)
             .appendSwap(address(token0), address(token1), true, inAmount)
             .appendReceive(address(token0), inAmount)
             .appendSend(address(token1), address(this), outAmount)
@@ -67,7 +67,7 @@ contract MegaPoolTest is Test, IGiver {
             tokens[i].mint(address(this), 100e18);
         }
 
-        bytes memory program = EncoderLib.init(16);
+        bytes memory program = OpEncoderLib.init(16);
         for (uint256 i; i < tokens.length - 1; i++) {
             address token0 = address(tokens[i]);
             address token1 = address(tokens[i + 1]);
@@ -82,7 +82,7 @@ contract MegaPoolTest is Test, IGiver {
         pool.execute(program);
 
         // forgefmt: disable-next-item
-        program = EncoderLib.init(16)
+        program = OpEncoderLib.init(16)
             .appendSwapHead(address(tokens[0]), address(tokens[1]), 0.1e18, true)
             .appendSwapHop(address(tokens[2]))
             .appendSwapHop(address(tokens[3]))
