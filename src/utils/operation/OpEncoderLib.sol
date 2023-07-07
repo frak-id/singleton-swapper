@@ -10,7 +10,7 @@ import {Ops} from "../../Ops.sol";
 library OpEncoderLib {
     function init(uint256 hashMapSize) internal pure returns (bytes memory program) {
         require(hashMapSize <= 0xffff);
-        assembly {
+        assembly ("memory-safe") {
             program := mload(0x40)
             mstore(0x40, add(program, 0x22))
             mstore(add(program, 2), hashMapSize)
@@ -24,7 +24,7 @@ library OpEncoderLib {
         returns (bytes memory)
     {
         uint256 op = Ops.SWAP | (zeroForOne ? Ops.SWAP_DIR : 0);
-        assembly {
+        assembly ("memory-safe") {
             let length := mload(self)
             mstore(self, add(length, 57))
             let initialOffset := add(add(self, 0x20), length)
@@ -33,6 +33,25 @@ library OpEncoderLib {
             mstore(add(initialOffset, 1), shl(96, token0))
             mstore(add(initialOffset, 21), shl(96, token1))
             mstore(add(initialOffset, 41), shl(128, amount))
+        }
+
+        return self;
+    }
+
+    function monoAppendSwap(bytes memory self, address token, bool zeroForOne, uint256 amount)
+        internal
+        pure
+        returns (bytes memory)
+    {
+        uint256 op = Ops.SWAP | (zeroForOne ? Ops.SWAP_DIR : 0);
+        assembly ("memory-safe") {
+            let length := mload(self)
+            mstore(self, add(length, 37))
+            let initialOffset := add(add(self, 0x20), length)
+
+            mstore(initialOffset, shl(248, op))
+            mstore(add(initialOffset, 1), shl(96, token))
+            mstore(add(initialOffset, 21), shl(128, amount))
         }
 
         return self;
@@ -50,7 +69,7 @@ library OpEncoderLib {
 
         (token0, token1, maxAmount0, maxAmount1) =
             token0 < token1 ? (token0, token1, maxAmount0, maxAmount1) : (token1, token0, maxAmount1, maxAmount0);
-        assembly {
+        assembly ("memory-safe") {
             let length := mload(self)
             mstore(self, add(length, 93))
             let initialOffset := add(add(self, 0x20), length)
@@ -66,6 +85,29 @@ library OpEncoderLib {
         return self;
     }
 
+    function monoAppendAddLiquidity(
+        bytes memory self,
+        address targetToken,
+        address to,
+        uint256 maxAmount0,
+        uint256 maxAmount1
+    ) internal pure returns (bytes memory) {
+        uint256 op = Ops.ADD_LIQ;
+        assembly ("memory-safe") {
+            let length := mload(self)
+            mstore(self, add(length, 73))
+            let initialOffset := add(add(self, 0x20), length)
+
+            mstore(initialOffset, shl(248, op))
+            mstore(add(initialOffset, 1), shl(96, targetToken))
+            mstore(add(initialOffset, 21), shl(96, to))
+            mstore(add(initialOffset, 41), shl(128, maxAmount0))
+            mstore(add(initialOffset, 57), shl(128, maxAmount1))
+        }
+
+        return self;
+    }
+
     function appendRemoveLiquidity(bytes memory self, address token0, address token1, uint256 liquidity)
         internal
         pure
@@ -74,7 +116,7 @@ library OpEncoderLib {
         uint256 op = Ops.RM_LIQ;
 
         (token0, token1) = sort(token0, token1);
-        assembly {
+        assembly ("memory-safe") {
             let length := mload(self)
             mstore(self, add(length, 73))
             let initialOffset := add(add(self, 0x20), length)
@@ -94,7 +136,7 @@ library OpEncoderLib {
         returns (bytes memory)
     {
         uint256 op = Ops.SEND;
-        assembly {
+        assembly ("memory-safe") {
             let length := mload(self)
             mstore(self, add(length, 57))
             let initialOffset := add(add(self, 0x20), length)
@@ -110,7 +152,7 @@ library OpEncoderLib {
 
     function appendSendAll(bytes memory self, address token, address to) internal pure returns (bytes memory) {
         uint256 op = Ops.SEND_ALL;
-        assembly {
+        assembly ("memory-safe") {
             let length := mload(self)
             mstore(self, add(length, 41))
             let initialOffset := add(add(self, 0x20), length)
@@ -125,7 +167,7 @@ library OpEncoderLib {
 
     function appendReceive(bytes memory self, address token, uint256 amount) internal pure returns (bytes memory) {
         uint256 op = Ops.RECEIVE;
-        assembly {
+        assembly ("memory-safe") {
             let length := mload(self)
             mstore(self, add(length, 37))
             let initialOffset := add(add(self, 0x20), length)
@@ -140,7 +182,7 @@ library OpEncoderLib {
 
     function appendReceiveAll(bytes memory self, address token) internal pure returns (bytes memory) {
         uint256 op = Ops.RECEIVE_ALL;
-        assembly {
+        assembly ("memory-safe") {
             let length := mload(self)
             mstore(self, add(length, 21))
             let initialOffset := add(add(self, 0x20), length)
@@ -159,7 +201,7 @@ library OpEncoderLib {
     {
         (token0, token1, zeroForOne) = sort(token0, token1, zeroForOne);
         uint256 op = Ops.SWAP_HEAD | (zeroForOne ? Ops.SWAP_DIR : 0);
-        assembly {
+        assembly ("memory-safe") {
             let length := mload(self)
             mstore(self, add(length, 57))
             let initialOffset := add(add(self, 0x20), length)
@@ -175,7 +217,7 @@ library OpEncoderLib {
 
     function appendSwapHop(bytes memory self, address nextToken) internal pure returns (bytes memory) {
         uint256 op = Ops.SWAP_HOP;
-        assembly {
+        assembly ("memory-safe") {
             let length := mload(self)
             mstore(self, add(length, 21))
             let initialOffset := add(add(self, 0x20), length)
@@ -188,7 +230,7 @@ library OpEncoderLib {
     }
 
     function done(bytes memory self) internal pure returns (bytes memory) {
-        assembly {
+        assembly ("memory-safe") {
             let freeMem := mload(0x40)
             mstore(0x40, add(freeMem, mload(self)))
         }

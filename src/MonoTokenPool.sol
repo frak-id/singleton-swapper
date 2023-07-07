@@ -51,7 +51,7 @@ contract MonoTokenPool is ReentrancyGuard {
 
     constructor(address token, uint256 feeBps) {
         require(feeBps < BPS);
-        require(baseToken != address(0));
+        require(token != address(0));
         baseToken = token;
         FEE_BPS = feeBps;
     }
@@ -313,7 +313,7 @@ contract MonoTokenPool is ReentrancyGuard {
     /* -------------------------------------------------------------------------- */
 
     function _getPc(bytes calldata program) internal pure returns (uint256 ptr, uint256 endPtr) {
-        assembly {
+        assembly ("memory-safe") {
             ptr := program.offset
             endPtr := add(ptr, program.length)
         }
@@ -321,7 +321,7 @@ contract MonoTokenPool is ReentrancyGuard {
 
     /// @dev Returns the pool for the given 'token'.
     function _getPool(address token) internal pure returns (Pool storage pool) {
-        assembly {
+        assembly ("memory-safe") {
             mstore(0x00, pools.slot)
             mstore(0x20, token)
             pool.slot := keccak256(0x00, 0x40)
