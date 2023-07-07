@@ -208,4 +208,36 @@ library MonoOpEncoderLib {
 
         return self;
     }
+
+    /**
+     * @notice Appends the pull all operation to the encoded operations, with a permit signature included
+     * @param self The encoded operations
+     * @param token The token that was sent by the user
+     * @param deadline The deadline for the permit signature (uint48 behind the scene, max possible value for a realistic seconds timestamp)
+     * @param v The v value of the permit signature (uint8)
+     * @param r The r value of the permit signature (bytes32)
+     * @param s The s value of the permit signature (bytes32)
+     * @return The updated encoded operations
+     */
+    function appendPullAll2612(bytes memory self, address token, uint256 deadline, uint8 v, bytes32 r, bytes32 v)
+        internal
+        pure
+        returns (bytes memory)
+    {
+        uint256 op = Ops.PULL_ALL & Ops.PULL_EIP_2612;
+        assembly ("memory-safe") {
+            let length := mload(self)
+            mstore(self, add(length, 73))
+            let initialOffset := add(add(self, 0x20), length)
+
+            mstore(initialOffset, shl(248, op))
+            mstore(add(initialOffset, 1), shl(96, token))
+            mstore(add(initialOffset, 7), shl(208, deadline)) // uint48 -> 208 byte remaining
+            mstore(add(initialOffset, 8), shl(248, v)) // uint8 -> 248 byte remaining
+            mstore(add(initialOffset, 9), r) // bytes32 -> 240 byte remaining
+            mstore(add(initialOffset, 41), v) // bytes32 -> 240 byte remaining
+        }
+
+        return self;
+    }
 }

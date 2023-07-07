@@ -23,4 +23,7 @@ library Ops {
 
     uint256 internal constant ALL_MIN_BOUND = 0x01;
     uint256 internal constant ALL_MAX_BOUND = 0x02;
+
+    /// @dev When pull all is for a EIP-2612 compliant erc20, it should perform the allowance first
+    uint256 internal constant PULL_EIP_2612 = 0x03;
 }
