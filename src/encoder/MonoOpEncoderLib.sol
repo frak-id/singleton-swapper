@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {Ops} from "../../Ops.sol";
+import {Ops} from "../Ops.sol";
 
 /// @title MonoOpEncoderLib
 /// @author philogy <https://github.com/philogy>

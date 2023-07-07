@@ -10,7 +10,7 @@ import {Ops} from "./Ops.sol";
 
 import {IGiver} from "./interfaces/IGiver.sol";
 import {ReentrancyGuard} from "./utils/ReentrancyGuard.sol";
-import {OpDecoderLib} from "./utils/operation/OpDecoderLib.sol";
+import {OpDecoderLib} from "./encoder/OpDecoderLib.sol";
 
 /// @title MegaPool
 /// @author philogy <https://github.com/philogy>

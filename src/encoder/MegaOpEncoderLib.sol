@@ -1,23 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {Ops} from "../../Ops.sol";
+import {Ops} from "../Ops.sol";
 
-/// @title OpEncoderLib
+/// @title MegaOpEncoderLib
 /// @author philogy <https://github.com/philogy>
 /// @author KONFeature <https://github.com/KONFeature>
 /// @notice Library for decoding operations
-library OpEncoderLib {
-    function init(uint256 hashMapSize) internal pure returns (bytes memory program) {
-        require(hashMapSize <= 0xffff);
-        assembly ("memory-safe") {
-            program := mload(0x40)
-            mstore(0x40, add(program, 0x22))
-            mstore(add(program, 2), hashMapSize)
-            mstore(program, 2)
-        }
-    }
-
+library MegaOpEncoderLib {
     function appendSwap(bytes memory self, address token0, address token1, bool zeroForOne, uint256 amount)
         internal
         pure
@@ -184,14 +174,6 @@ library OpEncoderLib {
             mstore(add(initialOffset, 1), shl(96, nextToken))
         }
 
-        return self;
-    }
-
-    function done(bytes memory self) internal pure returns (bytes memory) {
-        assembly ("memory-safe") {
-            let freeMem := mload(0x40)
-            mstore(0x40, add(freeMem, mload(self)))
-        }
         return self;
     }
 

@@ -4,8 +4,8 @@ pragma solidity 0.8.20;
 import "forge-std/console.sol";
 import {Test} from "forge-std/Test.sol";
 import {MonoTokenPool} from "src/MonoTokenPool.sol";
-import {MonoOpEncoderLib} from "src/utils/operation/MonoOpEncoderLib.sol";
-import {BaseEncoderLib} from "src/utils/operation//BaseEncoderLib.sol";
+import {MonoOpEncoderLib} from "src/encoder/MonoOpEncoderLib.sol";
+import {BaseEncoderLib} from "src/encoder/BaseEncoderLib.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {MockERC20} from "./mock/MockERC20.sol";
 import {ERC20} from "openzeppelin/token/ERC20/ERC20.sol";
@@ -47,11 +47,11 @@ contract MonoTokenPoolBpsTest is Test {
         targetToken.mint(liquidityProvider, initialDepositToken1);
 
         // Append initial liquidity to the pool
-        bytes memory program = BaseEncoderLib.init(4).appendAddLiquidity(
-            address(targetToken), liquidityProvider, initialDepositToken0, initialDepositToken1
-        ).appendReceive(address(baseToken), initialDepositToken0).appendReceive(
-            address(targetToken), initialDepositToken1
-        ).done();
+        // forgefmt: disable-next-item
+        bytes memory program = BaseEncoderLib.init(4)
+            .appendAddLiquidity(address(targetToken), liquidityProvider, initialDepositToken0, initialDepositToken1)
+            .appendReceive(address(baseToken), initialDepositToken0).appendReceive(address(targetToken), initialDepositToken1)
+            .done();
 
         vm.prank(liquidityProvider);
         pool.execute(program);
@@ -68,9 +68,13 @@ contract MonoTokenPoolBpsTest is Test {
         _swap1to0(address(targetToken), swapUser, targetToken.balanceOf(swapUser));
 
         // Tell the liquidityProvider to withdraw of all his founds
-        program = BaseEncoderLib.init(4).appendRemoveLiquidity(address(targetToken), 10e18).appendSendAll(
-            address(baseToken), liquidityProvider
-        ).appendSendAll(address(targetToken), liquidityProvider).done();
+        // forgefmt: disable-next-item
+        program = BaseEncoderLib.init(4)
+            .appendRemoveLiquidity(address(targetToken), 10e18)
+            .appendSendAll(address(baseToken), liquidityProvider)
+            .appendSendAll(address(targetToken), liquidityProvider)
+            .done();
+
         vm.prank(liquidityProvider);
         pool.execute(program);
 
@@ -100,9 +104,12 @@ contract MonoTokenPoolBpsTest is Test {
         uint256 outAmount = reserves1 - (reserves0 * reserves1) / (reserves0 + inAmount * (1e4 - bps) / 1e4);
 
         // Build the swap op
-        bytes memory operations = BaseEncoderLib.init(4).appendSwap(token, true, inAmount).appendReceive(
-            address(baseToken), inAmount
-        ).appendSend(token, user, outAmount).done();
+        // forgefmt: disable-next-item
+        bytes memory operations = BaseEncoderLib.init(4)
+            .appendSwap(token, true, inAmount)
+            .appendReceive(address(baseToken), inAmount)
+            .appendSend(token, user, outAmount)
+            .done();
 
         // Send it
         vm.prank(user);
@@ -125,9 +132,13 @@ contract MonoTokenPoolBpsTest is Test {
         uint256 outAmount = reserves0 - (reserves0 * reserves1) / (reserves1 + inAmount * (1e4 - bps) / 1e4);
 
         // Build the swap op
-        bytes memory operations = BaseEncoderLib.init(4).appendSwap(token, false, inAmount).appendReceive(
-            token, inAmount
-        ).appendSend(address(baseToken), user, outAmount).done();
+        // forgefmt: disable-next-item
+        bytes memory operations = BaseEncoderLib.init(4)
+            .appendSwap(token, false, inAmount)
+            .appendReceive(token, inAmount)
+            .appendSend(address(baseToken), user, outAmount)
+            .done();
+
         vm.prank(user);
         pool.execute(operations);
 
