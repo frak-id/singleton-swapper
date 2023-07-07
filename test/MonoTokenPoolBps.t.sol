@@ -4,8 +4,8 @@ pragma solidity 0.8.20;
 import "forge-std/console.sol";
 import {Test} from "forge-std/Test.sol";
 import {MonoTokenPool} from "src/MonoTokenPool.sol";
-import {MegaPool} from "src/MegaPool.sol";
-import {OpEncoderLib} from "../src/utils/operation/OpEncoderLib.sol";
+import {MonoOpEncoderLib} from "src/utils/operation/MonoOpEncoderLib.sol";
+import {BaseEncoderLib} from "src/utils/operation//BaseEncoderLib.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {MockERC20} from "./mock/MockERC20.sol";
 import {ERC20} from "openzeppelin/token/ERC20/ERC20.sol";
@@ -16,7 +16,8 @@ import {MockGiver} from "./mock/MockGiver.sol";
 /// @notice Test contract for MonoTokenPool with a BPS value
 contract MonoTokenPoolBpsTest is Test {
     using SafeTransferLib for address;
-    using OpEncoderLib for bytes;
+    using BaseEncoderLib for bytes;
+    using MonoOpEncoderLib for bytes;
 
     MonoTokenPool private pool;
 
@@ -46,7 +47,7 @@ contract MonoTokenPoolBpsTest is Test {
         targetToken.mint(liquidityProvider, initialDepositToken1);
 
         // Append initial liquidity to the pool
-        bytes memory program = OpEncoderLib.init(4).monoAppendAddLiquidity(
+        bytes memory program = BaseEncoderLib.init(4).appendAddLiquidity(
             address(targetToken), liquidityProvider, initialDepositToken0, initialDepositToken1
         ).appendReceive(address(baseToken), initialDepositToken0).appendReceive(
             address(targetToken), initialDepositToken1
@@ -67,30 +68,30 @@ contract MonoTokenPoolBpsTest is Test {
         _swap1to0(address(targetToken), swapUser, targetToken.balanceOf(swapUser));
 
         // Tell the liquidityProvider to withdraw of all his founds
-        /*program = OpEncoderLib.init(4).appendRemoveLiquidity(address(token0), address(token1), 10e18).appendSendAll(
-            address(token0), liquidityProvider
-        ).appendSendAll(address(token1), liquidityProvider).done();
+        program = BaseEncoderLib.init(4).appendRemoveLiquidity(address(targetToken), 10e18).appendSendAll(
+            address(baseToken), liquidityProvider
+        ).appendSendAll(address(targetToken), liquidityProvider).done();
         vm.prank(liquidityProvider);
         pool.execute(program);
 
         // Log the final state
         console.log("= Post remove liquidity =");
-        _postSwapReserveLog(address(token0), address(token1));
+        _postSwapReserveLog(address(targetToken));
         console.log("");
 
         // Ensure that the liquidity provider has all his founds
-        uint256 newBalanceToken0 = token0.balanceOf(liquidityProvider);
-        uint256 newBalanceToken1 = token1.balanceOf(liquidityProvider);
+        uint256 newBalanceToken0 = baseToken.balanceOf(liquidityProvider);
+        uint256 newBalanceToken1 = targetToken.balanceOf(liquidityProvider);
         console.log("liquidity provider new global balance: %s", newBalanceToken0 + newBalanceToken1);
         console.log(
             "liquidity provider profit: %s",
             (newBalanceToken0 + newBalanceToken1) - (initialDepositToken0 + initialDepositToken1)
         );
-        assertGt(newBalanceToken0 + newBalanceToken1, initialDepositToken0 + initialDepositToken1);*/
+        assertGt(newBalanceToken0 + newBalanceToken1, initialDepositToken0 + initialDepositToken1);
     }
 
     function _swap0to1(address token, address user, uint256 toSwap) internal {
-        (uint128 reserves0, uint128 reserves1, uint256 totalLiquidity) = pool.getPool(token);
+        (uint128 reserves0, uint128 reserves1,) = pool.getPool(token);
 
         // Perform a second swap
         uint256 inAmount = toSwap;
@@ -99,7 +100,7 @@ contract MonoTokenPoolBpsTest is Test {
         uint256 outAmount = reserves1 - (reserves0 * reserves1) / (reserves0 + inAmount * (1e4 - bps) / 1e4);
 
         // Build the swap op
-        bytes memory operations = OpEncoderLib.init(4).monoAppendSwap(token, true, inAmount).appendReceive(
+        bytes memory operations = BaseEncoderLib.init(4).appendSwap(token, true, inAmount).appendReceive(
             address(baseToken), inAmount
         ).appendSend(token, user, outAmount).done();
 
@@ -115,7 +116,7 @@ contract MonoTokenPoolBpsTest is Test {
     }
 
     function _swap1to0(address token, address user, uint256 toSwap) internal {
-        (uint128 reserves0, uint128 reserves1, uint256 totalLiquidity) = pool.getPool(token);
+        (uint128 reserves0, uint128 reserves1,) = pool.getPool(token);
 
         // Perform a second swap
         uint256 inAmount = toSwap;
@@ -124,7 +125,7 @@ contract MonoTokenPoolBpsTest is Test {
         uint256 outAmount = reserves0 - (reserves0 * reserves1) / (reserves1 + inAmount * (1e4 - bps) / 1e4);
 
         // Build the swap op
-        bytes memory operations = OpEncoderLib.init(4).monoAppendSwap(token, false, inAmount).appendReceive(
+        bytes memory operations = BaseEncoderLib.init(4).appendSwap(token, false, inAmount).appendReceive(
             token, inAmount
         ).appendSend(address(baseToken), user, outAmount).done();
         vm.prank(user);

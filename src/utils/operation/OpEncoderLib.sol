@@ -38,25 +38,6 @@ library OpEncoderLib {
         return self;
     }
 
-    function monoAppendSwap(bytes memory self, address token, bool zeroForOne, uint256 amount)
-        internal
-        pure
-        returns (bytes memory)
-    {
-        uint256 op = Ops.SWAP | (zeroForOne ? Ops.SWAP_DIR : 0);
-        assembly ("memory-safe") {
-            let length := mload(self)
-            mstore(self, add(length, 37))
-            let initialOffset := add(add(self, 0x20), length)
-
-            mstore(initialOffset, shl(248, op))
-            mstore(add(initialOffset, 1), shl(96, token))
-            mstore(add(initialOffset, 21), shl(128, amount))
-        }
-
-        return self;
-    }
-
     function appendAddLiquidity(
         bytes memory self,
         address token0,
@@ -80,29 +61,6 @@ library OpEncoderLib {
             mstore(add(initialOffset, 41), shl(96, to))
             mstore(add(initialOffset, 61), shl(128, maxAmount0))
             mstore(add(initialOffset, 77), shl(128, maxAmount1))
-        }
-
-        return self;
-    }
-
-    function monoAppendAddLiquidity(
-        bytes memory self,
-        address targetToken,
-        address to,
-        uint256 maxAmount0,
-        uint256 maxAmount1
-    ) internal pure returns (bytes memory) {
-        uint256 op = Ops.ADD_LIQ;
-        assembly ("memory-safe") {
-            let length := mload(self)
-            mstore(self, add(length, 73))
-            let initialOffset := add(add(self, 0x20), length)
-
-            mstore(initialOffset, shl(248, op))
-            mstore(add(initialOffset, 1), shl(96, targetToken))
-            mstore(add(initialOffset, 21), shl(96, to))
-            mstore(add(initialOffset, 41), shl(128, maxAmount0))
-            mstore(add(initialOffset, 57), shl(128, maxAmount1))
         }
 
         return self;
