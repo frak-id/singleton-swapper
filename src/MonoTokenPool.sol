@@ -12,11 +12,12 @@ import {IGiver} from "./interfaces/IGiver.sol";
 import {ReentrancyGuard} from "./utils/ReentrancyGuard.sol";
 import {OpDecoderLib} from "./utils/operation/OpDecoderLib.sol";
 
-/// @title MegaPool
+/// @title MonoTokenPool
 /// @author philogy <https://github.com/philogy>
-/// @author KONFeature <https://github.com/KONFeature>
-/// @notice The multi pool contract that handles all the pools and their actions
-contract MegaPool is ReentrancyGuard {
+/// @notice Same as the original MegaTokenPool, but with a single ERC_20 base token (useful for project that want a pool for their internal swap)
+/// @dev baseToken as 0 and 1 as target pool token
+/// @dev Every delta, reserves and liquidity follow this rule
+contract MonoTokenPool is ReentrancyGuard {
     using SafeTransferLib for address;
     using SafeCastLib for uint256;
     using OpDecoderLib for uint256;
@@ -25,16 +26,22 @@ contract MegaPool is ReentrancyGuard {
     /*                                   Storage                                  */
     /* -------------------------------------------------------------------------- */
 
+    /// @dev The fee that will be taken from each swaps
     uint256 public immutable FEE_BPS;
 
-    mapping(address poolKey => Pool pool) internal pools;
+    /// @dev The base token we will use for all the pools
+    address private immutable baseToken;
+
+    /// @dev The mapping of all the pools per target token
+    mapping(address token => Pool pool) internal pools;
+
+    /// @dev The mapping of our reserves per tokens
     mapping(address token => uint256 totalReserve) public totalReservesOf;
 
     /* -------------------------------------------------------------------------- */
     /*                               Custom error's                               */
     /* -------------------------------------------------------------------------- */
 
-    error InvalidTokens();
     error InvalidOp(uint256 op);
     error LeftoverDelta();
     error InvalidGive();
@@ -42,8 +49,10 @@ contract MegaPool is ReentrancyGuard {
     error NegativeReceive();
     error AmountOutsideBounds();
 
-    constructor(uint256 feeBps) {
+    constructor(address token, uint256 feeBps) {
         require(feeBps < BPS);
+        require(baseToken != address(0));
+        baseToken = token;
         FEE_BPS = feeBps;
     }
 
@@ -107,10 +116,6 @@ contract MegaPool is ReentrancyGuard {
             ptr = _send(state, ptr);
         } else if (mop == Ops.RECEIVE) {
             ptr = _receive(state, ptr);
-        } else if (mop == Ops.SWAP_HEAD) {
-            ptr = _swapHead(state, ptr, op);
-        } else if (mop == Ops.SWAP_HOP) {
-            ptr = _swapHop(state, ptr);
         } else if (mop == Ops.SEND_ALL) {
             ptr = _sendAll(state, ptr, op);
         } else if (mop == Ops.RECEIVE_ALL) {
@@ -125,54 +130,48 @@ contract MegaPool is ReentrancyGuard {
     }
 
     function _swap(State memory state, uint256 ptr, uint256 op) internal returns (uint256) {
-        address token0;
-        address token1;
+        address token;
         uint256 amount;
-        (ptr, token0) = ptr.readAddress();
-        (ptr, token1) = ptr.readAddress();
+        (ptr, token) = ptr.readAddress();
         bool zeroForOne = (op & Ops.SWAP_DIR) != 0;
         (ptr, amount) = ptr.readUint(16);
 
-        (int256 delta0, int256 delta1) = _getPool(token0, token1).swap(zeroForOne, amount, FEE_BPS);
+        (int256 delta0, int256 delta1) = _getPool(token).swap(zeroForOne, amount, FEE_BPS);
 
-        state.tokenDeltas.accountChange(token0, delta0);
-        state.tokenDeltas.accountChange(token1, delta1);
+        state.tokenDeltas.accountChange(baseToken, delta0);
+        state.tokenDeltas.accountChange(token, delta1);
 
         return ptr;
     }
 
     function _addLiquidity(State memory state, uint256 ptr) internal returns (uint256) {
-        address token0;
-        address token1;
+        address token;
         address to;
         uint256 maxAmount0;
         uint256 maxAmount1;
-        (ptr, token0) = ptr.readAddress();
-        (ptr, token1) = ptr.readAddress();
+        (ptr, token) = ptr.readAddress();
         (ptr, to) = ptr.readAddress();
         (ptr, maxAmount0) = ptr.readUint(16);
         (ptr, maxAmount1) = ptr.readUint(16);
 
-        (, int256 delta0, int256 delta1) = _getPool(token0, token1).addLiquidity(to, maxAmount0, maxAmount1);
+        (, int256 delta0, int256 delta1) = _getPool(token).addLiquidity(to, maxAmount0, maxAmount1);
 
-        state.tokenDeltas.accountChange(token0, delta0);
-        state.tokenDeltas.accountChange(token1, delta1);
+        state.tokenDeltas.accountChange(baseToken, delta0);
+        state.tokenDeltas.accountChange(token, delta1);
 
         return ptr;
     }
 
     function _removeLiquidity(State memory state, uint256 ptr) internal returns (uint256) {
-        address token0;
-        address token1;
+        address token;
         uint256 liq;
-        (ptr, token0) = ptr.readAddress();
-        (ptr, token1) = ptr.readAddress();
+        (ptr, token) = ptr.readAddress();
         (ptr, liq) = ptr.readUint(32);
 
-        (int256 delta0, int256 delta1) = _getPool(token0, token1).removeLiquidity(msg.sender, liq);
+        (int256 delta0, int256 delta1) = _getPool(token).removeLiquidity(msg.sender, liq);
 
-        state.tokenDeltas.accountChange(token0, delta0);
-        state.tokenDeltas.accountChange(token1, delta1);
+        state.tokenDeltas.accountChange(baseToken, delta0);
+        state.tokenDeltas.accountChange(token, delta1);
 
         return ptr;
     }
@@ -201,43 +200,6 @@ contract MegaPool is ReentrancyGuard {
         (ptr, amount) = ptr.readUint(16);
 
         _receive(state, token, amount);
-
-        return ptr;
-    }
-
-    function _swapHead(State memory state, uint256 ptr, uint256 op) internal returns (uint256) {
-        address token0;
-        address token1;
-        uint256 amount;
-        (ptr, token0) = ptr.readAddress();
-        (ptr, token1) = ptr.readAddress();
-        (ptr, amount) = ptr.readUint(16);
-
-        bool zeroForOne = (op & Ops.SWAP_DIR) != 0;
-
-        (int256 delta0, int256 delta1) = _getPool(token0, token1).swap(zeroForOne, amount, FEE_BPS);
-        state.lastToken = zeroForOne ? token1 : token0;
-
-        state.tokenDeltas.accountChange(token0, delta0);
-        state.tokenDeltas.accountChange(token1, delta1);
-
-        return ptr;
-    }
-
-    function _swapHop(State memory state, uint256 ptr) internal returns (uint256) {
-        address lastToken = state.lastToken;
-        address nextToken;
-        (ptr, nextToken) = ptr.readAddress();
-
-        (address token0, address token1, bool zeroForOne) =
-            nextToken > lastToken ? (lastToken, nextToken, true) : (nextToken, lastToken, false);
-
-        int256 delta = state.tokenDeltas.resetChange(lastToken);
-        if (delta > 0) revert NegativeAmount();
-
-        (int256 delta0, int256 delta1) = _getPool(token0, token1).swap(zeroForOne, uint256(-delta), FEE_BPS);
-        state.lastToken = nextToken;
-        state.tokenDeltas.accountChange(nextToken, zeroForOne ? delta1 : delta0);
 
         return ptr;
     }
@@ -331,19 +293,19 @@ contract MegaPool is ReentrancyGuard {
     /*                           External view method's                           */
     /* -------------------------------------------------------------------------- */
 
-    function getPool(address token0, address token1)
+    function getPool(address token)
         external
         view
         returns (uint128 reserves0, uint128 reserves1, uint256 totalLiquidity)
     {
-        Pool storage pool = _getPool(token0, token1);
+        Pool storage pool = _getPool(token);
         reserves0 = pool.reserves0;
         reserves1 = pool.reserves1;
         totalLiquidity = pool.totalLiquidity;
     }
 
-    function getPosition(address token0, address token1, address owner) external view returns (uint256) {
-        return _getPool(token0, token1).positions[owner];
+    function getPosition(address token, address owner) external view returns (uint256) {
+        return _getPool(token).positions[owner];
     }
 
     /* -------------------------------------------------------------------------- */
@@ -357,16 +319,12 @@ contract MegaPool is ReentrancyGuard {
         }
     }
 
-    function _getPool(address token0, address token1) internal pure returns (Pool storage pool) {
-        if (token0 >= token1) revert InvalidTokens();
-
+    /// @dev Returns the pool for the given 'token'.
+    function _getPool(address token) internal pure returns (Pool storage pool) {
         assembly {
-            let freeMem := mload(0x40)
             mstore(0x00, pools.slot)
-            mstore(0x20, token0)
-            mstore(0x40, token1)
-            pool.slot := keccak256(0x00, 0x60)
-            mstore(0x40, freeMem)
+            mstore(0x20, token)
+            pool.slot := keccak256(0x00, 0x40)
         }
     }
 }
