@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity 0.8.20;
 
+import "forge-std/console.sol";
+
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
 import {IERC20Permit} from "openzeppelin/token/ERC20/extensions/IERC20Permit.sol";
@@ -9,6 +11,7 @@ import {Accounter} from "./libs/AccounterLib.sol";
 import {BPS} from "./libs/SwapLib.sol";
 import {Ops} from "./Ops.sol";
 
+import {IWrappedNativeToken} from "./interfaces/IWrappedNativeToken.sol";
 import {IGiver} from "./interfaces/IGiver.sol";
 import {ReentrancyGuard} from "./utils/ReentrancyGuard.sol";
 import {OpDecoderLib} from "./encoder/OpDecoderLib.sol";
@@ -56,8 +59,8 @@ contract MonoTokenPool is ReentrancyGuard {
     constructor(address token, uint256 feeBps) {
         require(feeBps < BPS);
         require(token != address(0));
-        baseToken = token;
         FEE_BPS = feeBps;
+        baseToken = token;
     }
 
     /**
@@ -82,7 +85,7 @@ contract MonoTokenPool is ReentrancyGuard {
      *    n bytes: opcode data
      * Refer to the function documentation for details on individual operations.
      */
-    function execute(bytes calldata program) external nonReentrant {
+    function execute(bytes calldata program) external payable nonReentrant {
         (uint256 ptr, uint256 endPtr) = _getPc(program);
 
         State memory state;
@@ -119,11 +122,11 @@ contract MonoTokenPool is ReentrancyGuard {
         } else if (mop == Ops.SEND) {
             ptr = _send(state, ptr);
         } else if (mop == Ops.RECEIVE) {
-            ptr = _receive(state, ptr);
+            ptr = _receive(state, ptr, op);
         } else if (mop == Ops.RECEIVE_ALL) {
             ptr = _receiveAll(state, ptr, op);
         } else if (mop == Ops.PERMIT_VIA_SIG) {
-            ptr = _permitViaSig(state, ptr, op);
+            ptr = _permitViaSig(ptr);
         } else if (mop == Ops.ADD_LIQ) {
             ptr = _addLiquidity(state, ptr);
         } else if (mop == Ops.RM_LIQ) {
@@ -198,14 +201,24 @@ contract MonoTokenPool is ReentrancyGuard {
         return ptr;
     }
 
-    function _receive(State memory state, uint256 ptr) internal returns (uint256) {
+    function _receive(State memory state, uint256 ptr, uint256 op) internal returns (uint256) {
         address token;
         uint256 amount;
 
         (ptr, token) = ptr.readAddress();
         (ptr, amount) = ptr.readUint(16);
 
-        _receive(state, token, amount);
+        // In the case of a native token reception
+        if (op & Ops.RECEIVE_NATIVE_TOKEN != 0) {
+            // Try to deposit the native token
+            IWrappedNativeToken(token).deposit{value: amount}();
+
+            // Tell that we received the token
+            _accountReceived(state, token);
+        } else {
+            // Otherwise, we just account for the received token
+            _receive(state, token, amount);
+        }
 
         return ptr;
     }
@@ -279,7 +292,7 @@ contract MonoTokenPool is ReentrancyGuard {
         return ptr;
     }
 
-    function _permitViaSig(State memory state, uint256 ptr, uint256 op) internal returns (uint256) {
+    function _permitViaSig(uint256 ptr) internal returns (uint256) {
         address token;
         uint256 amount;
         uint256 deadline;

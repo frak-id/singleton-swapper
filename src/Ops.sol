@@ -25,6 +25,10 @@ library Ops {
     uint256 internal constant ALL_MIN_BOUND = 0x01;
     uint256 internal constant ALL_MAX_BOUND = 0x02;
 
-    /// @dev Token specific operations
+    /// @dev Permit token withdraw via EIP-2612 signature
     uint256 internal constant PERMIT_VIA_SIG = 0xA0;
+
+    /// @dev Native token specific operations
+    uint256 internal constant RECEIVE_NATIVE_TOKEN = 0x01;
+    uint256 internal constant UNWRAP_AND_SEND_NATIVE = 0xC0;
 }

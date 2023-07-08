@@ -128,6 +128,48 @@ contract MonoTokenNativePool is Test {
     }
 
     /// @dev Test the swap method with native token
+    function test_swapNativeViaWrap() public {
+        // Create our swap user
+        address swapUser = _newUser("swapUser");
+
+        // Amount of native token to swap
+        uint256 amountToSwap = 1e18;
+
+        // Allow the pool to access the user founds
+        vm.deal(swapUser, amountToSwap);
+        vm.startPrank(swapUser);
+        vm.stopPrank();
+
+        // Print initial state
+        console.log("=== Before swap ===");
+        _postSwapReserveLog();
+        _postSwapBalanceLog(swapUser);
+
+        // Build the swap operations
+        // forgefmt: disable-next-item
+        bytes memory program = BaseEncoderLib.init(4)
+            .appendSwap(address(wNativeToken), false, amountToSwap)
+            .appendReceive(address(wNativeToken), amountToSwap, true)
+            .appendSendAll(address(baseToken), swapUser)
+            .done();
+
+        // Execute the swap
+        vm.prank(swapUser);
+        pool.execute{value: amountToSwap}(program);
+
+        // Print final pool state
+        console.log("=== Final Pool State ===");
+        _postSwapReserveLog();
+        _postSwapBalanceLog(swapUser);
+
+        // Ensure the user has no more native token
+        // assertEq(wNativeToken.balanceOf(swapUser), 0);
+        // Ensure the user has received the base token, but the fees are taken
+        // assertGt(baseToken.balanceOf(swapUser), 0);
+        // assertLt(baseToken.balanceOf(swapUser), amountToSwap);
+    }
+
+    /// @dev Test the swap method with native token
     function test_swapPermitOk() public {
         // Create our swap user
         (address swapUser, uint256 privateKey) = _newUserWithPrivKey("swapUser");

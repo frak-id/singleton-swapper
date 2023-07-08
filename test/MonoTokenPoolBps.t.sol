@@ -50,7 +50,8 @@ contract MonoTokenPoolBpsTest is Test {
         // forgefmt: disable-next-item
         bytes memory program = BaseEncoderLib.init(4)
             .appendAddLiquidity(address(targetToken), liquidityProvider, initialDepositToken0, initialDepositToken1)
-            .appendReceive(address(baseToken), initialDepositToken0).appendReceive(address(targetToken), initialDepositToken1)
+            .appendReceive(address(baseToken), initialDepositToken0, false)
+            .appendReceive(address(targetToken), initialDepositToken1, false)
             .done();
 
         vm.prank(liquidityProvider);
@@ -107,7 +108,7 @@ contract MonoTokenPoolBpsTest is Test {
         // forgefmt: disable-next-item
         bytes memory operations = BaseEncoderLib.init(4)
             .appendSwap(token, true, inAmount)
-            .appendReceive(address(baseToken), inAmount)
+            .appendReceive(address(baseToken), inAmount, false)
             .appendSend(token, user, outAmount)
             .done();
 
@@ -135,7 +136,7 @@ contract MonoTokenPoolBpsTest is Test {
         // forgefmt: disable-next-item
         bytes memory operations = BaseEncoderLib.init(4)
             .appendSwap(token, false, inAmount)
-            .appendReceive(token, inAmount)
+            .appendReceive(token, inAmount, false)
             .appendSend(address(baseToken), user, outAmount)
             .done();
 

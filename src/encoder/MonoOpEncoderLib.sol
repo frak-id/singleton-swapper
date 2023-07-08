@@ -152,10 +152,18 @@ library MonoOpEncoderLib {
      * @param self The encoded operations
      * @param token The token to be received by the user
      * @param amount The amount of tokens to receive
+     * @param isNative Do we want to receive the native token or not?
      * @return The updated encoded operations
      */
-    function appendReceive(bytes memory self, address token, uint256 amount) internal pure returns (bytes memory) {
+    function appendReceive(bytes memory self, address token, uint256 amount, bool isNative)
+        internal
+        pure
+        returns (bytes memory)
+    {
         uint256 op = Ops.RECEIVE;
+        if (isNative) {
+            op = op + Ops.RECEIVE_NATIVE_TOKEN;
+        }
         assembly ("memory-safe") {
             let length := mload(self)
             mstore(self, add(length, 37))
