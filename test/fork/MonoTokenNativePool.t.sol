@@ -8,6 +8,7 @@ import {MonoOpEncoderLib} from "src/encoder/MonoOpEncoderLib.sol";
 import {BaseEncoderLib} from "src/encoder/BaseEncoderLib.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {MockERC20} from "../mock/MockERC20.sol";
+import {MockPermitERC20} from "../mock/MockPermitERC20.sol";
 import {MockWNative} from "../mock/MockWNative.sol";
 
 /// @title MonoTokenNativePool.t
@@ -25,13 +26,17 @@ contract MonoTokenNativePool is Test {
     uint256 private bps = 1e3;
 
     /// @dev The base token
-    MockERC20 private baseToken;
+    MockPermitERC20 private baseToken;
 
     /// @dev The wrapped native token mock
     MockWNative private wNativeToken;
 
     /// @dev Our liquidity provider user
     address private liquidityProvider;
+
+    /// @dev The permit typehash
+    bytes32 private constant _PERMIT_TYPEHASH =
+        keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
 
     function setUp() public {
         baseToken = _newToken("baseToken");
@@ -122,6 +127,69 @@ contract MonoTokenNativePool is Test {
         assertLt(baseToken.balanceOf(swapUser), amountToSwap);
     }
 
+    /// @dev Test the swap method with native token
+    function test_swapPermitOk() public {
+        // Create our swap user
+        (address swapUser, uint256 privateKey) = _newUserWithPrivKey("swapUser");
+
+        // Amount of base token to swap
+        uint256 amountToSwap = 1e18;
+
+        // Mint a few to our swapUser
+        baseToken.mint(swapUser, amountToSwap);
+
+        // Generate the permit signature
+        uint256 deadline = block.timestamp + 100;
+        uint256 nonce = baseToken.nonces(swapUser);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(
+            privateKey,
+            keccak256(
+                abi.encodePacked(
+                    "\x19\x01",
+                    baseToken.DOMAIN_SEPARATOR(),
+                    keccak256(abi.encode(_PERMIT_TYPEHASH, swapUser, address(pool), amountToSwap, nonce, deadline))
+                )
+            )
+        );
+
+        // Permit params print
+        console.log("=== Permit Params ===");
+        console.log(" - deadline: %s", deadline);
+        console.log(" - nonce: %s", nonce);
+        console.log(" - v: %s", uint256(v));
+        console.log(" - r: %s", uint256(r));
+        console.log(" - s: %s", uint256(s));
+
+        // Print initial state
+        console.log("=== Before swap ===");
+        _postSwapReserveLog();
+        _postSwapBalanceLog(swapUser);
+
+        // Build the swap operations
+        // forgefmt: disable-next-item
+        bytes memory program = BaseEncoderLib.init(4)
+            .appendSwap(address(wNativeToken), true, amountToSwap)
+            .appendPermitViaSig(address(baseToken), amountToSwap, deadline, v, r, s)
+            .appendPullAll(address(baseToken))
+            .appendSendAll(address(wNativeToken), swapUser)
+            .done();
+
+        // Execute the swap
+        vm.prank(swapUser);
+        pool.execute(program);
+
+        // Print final pool state
+        console.log("=== Final Pool State ===");
+        _postSwapReserveLog();
+        _postSwapBalanceLog(swapUser);
+
+        // Ensure the user has no more native token
+        assertEq(baseToken.balanceOf(swapUser), 0);
+        // Ensure the user has received the base token, but the fees are taken
+        assertGt(wNativeToken.balanceOf(swapUser), 0);
+        assertLt(wNativeToken.balanceOf(swapUser), amountToSwap);
+    }
+
     function _postSwapReserveLog() internal view {
         (uint128 reserves0, uint128 reserves1, uint256 totalLiquidity) = pool.getPool(address(wNativeToken));
         console.log("- Pool");
@@ -136,8 +204,8 @@ contract MonoTokenNativePool is Test {
         console.log(" - token wrap: %s", wNativeToken.balanceOf(user));
     }
 
-    function _newToken(string memory label) internal returns (MockERC20 newToken) {
-        newToken = new MockERC20();
+    function _newToken(string memory label) internal returns (MockPermitERC20 newToken) {
+        newToken = new MockPermitERC20();
         vm.label(address(newToken), label);
     }
 
@@ -148,6 +216,12 @@ contract MonoTokenNativePool is Test {
 
     function _newUser(string memory label) internal returns (address swapUser) {
         swapUser = address(bytes20(keccak256(abi.encode(label))));
+        vm.label(swapUser, label);
+    }
+
+    function _newUserWithPrivKey(string memory label) internal returns (address swapUser, uint256 privKey) {
+        privKey = uint256(keccak256(abi.encode(label)));
+        swapUser = vm.addr(privKey);
         vm.label(swapUser, label);
     }
 }

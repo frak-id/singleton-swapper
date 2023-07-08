@@ -232,16 +232,16 @@ library MonoOpEncoderLib {
         uint256 op = Ops.PERMIT_VIA_SIG;
         assembly ("memory-safe") {
             let length := mload(self)
-            mstore(self, add(length, 110))
+            mstore(self, add(length, 108))
             let initialOffset := add(add(self, 0x20), length)
 
             mstore(initialOffset, shl(248, op))
             mstore(add(initialOffset, 1), shl(96, token)) // bytes20
             mstore(add(initialOffset, 21), shl(128, amount)) // uint128 -> bytes16
-            mstore(add(initialOffset, 37), shl(208, deadline)) // uint48 -> bytes8
-            mstore(add(initialOffset, 45), shl(248, v)) // uint8 -> bytes1
-            mstore(add(initialOffset, 46), r) // bytes32
-            mstore(add(initialOffset, 78), s) // bytes32
+            mstore(add(initialOffset, 37), shl(208, deadline)) // uint48 -> bytes6
+            mstore(add(initialOffset, 43), shl(248, v)) // uint8 -> bytes1
+            mstore(add(initialOffset, 44), r) // bytes32
+            mstore(add(initialOffset, 76), s) // bytes32
         }
 
         return self;

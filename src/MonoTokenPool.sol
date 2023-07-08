@@ -3,7 +3,7 @@ pragma solidity 0.8.20;
 
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
-import {IERC20Permit} from "openzeppelin/token/ERC20/extensions/draft-IERC20Permit.sol";
+import {IERC20Permit} from "openzeppelin/token/ERC20/extensions/IERC20Permit.sol";
 import {Pool} from "./libs/PoolLib.sol";
 import {Accounter} from "./libs/AccounterLib.sol";
 import {BPS} from "./libs/SwapLib.sol";
@@ -289,13 +289,15 @@ contract MonoTokenPool is ReentrancyGuard {
 
         (ptr, token) = ptr.readAddress();
         (ptr, amount) = ptr.readUint(16);
-        (ptr, deadline) = ptr.readUint(8);
+        (ptr, deadline) = ptr.readUint(6);
         (ptr, v) = ptr.readUint(1);
         (ptr, r) = ptr.readBytes(32);
         (ptr, s) = ptr.readBytes(32);
 
         // TODO: Ensure valid sig?
         // TODO: Bette way to call permit function?
+        // TODO: SOC another contract performing the permit and wrapping operations?
+        // TODO: Like a pre swap hook? Or a pre swap execution layer with dedicated commands?
         IERC20Permit(token).permit(msg.sender, address(this), amount, deadline, uint8(v), r, s);
 
         return ptr;
