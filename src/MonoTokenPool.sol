@@ -112,22 +112,22 @@ contract MonoTokenPool is ReentrancyGuard {
         uint256 mop = op & Ops.MASK_OP;
         if (mop == Ops.SWAP) {
             ptr = _swap(state, ptr, op);
-        } else if (mop == Ops.ADD_LIQ) {
-            ptr = _addLiquidity(state, ptr);
-        } else if (mop == Ops.RM_LIQ) {
-            ptr = _removeLiquidity(state, ptr);
+        } else if (mop == Ops.SEND_ALL) {
+            ptr = _sendAll(state, ptr, op);
+        } else if (mop == Ops.PULL_ALL) {
+            ptr = _pullAll(state, ptr, op);
         } else if (mop == Ops.SEND) {
             ptr = _send(state, ptr);
         } else if (mop == Ops.RECEIVE) {
             ptr = _receive(state, ptr);
-        } else if (mop == Ops.SEND_ALL) {
-            ptr = _sendAll(state, ptr, op);
         } else if (mop == Ops.RECEIVE_ALL) {
             ptr = _receiveAll(state, ptr, op);
-        } else if (mop == Ops.PULL_ALL) {
-            ptr = _pullAll(state, ptr, op);
         } else if (mop == Ops.PERMIT_VIA_SIG) {
             ptr = _permitViaSig(state, ptr, op);
+        } else if (mop == Ops.ADD_LIQ) {
+            ptr = _addLiquidity(state, ptr);
+        } else if (mop == Ops.RM_LIQ) {
+            ptr = _removeLiquidity(state, ptr);
         } else {
             revert InvalidOp(op);
         }
@@ -172,7 +172,7 @@ contract MonoTokenPool is ReentrancyGuard {
         address token;
         uint256 liq;
         (ptr, token) = ptr.readAddress();
-        (ptr, liq) = ptr.readUint(32);
+        (ptr, liq) = ptr.readFullUint();
 
         (int256 delta0, int256 delta1) = _getPool(token).removeLiquidity(msg.sender, liq);
 
@@ -291,8 +291,8 @@ contract MonoTokenPool is ReentrancyGuard {
         (ptr, amount) = ptr.readUint(16);
         (ptr, deadline) = ptr.readUint(6);
         (ptr, v) = ptr.readUint(1);
-        (ptr, r) = ptr.readBytes(32);
-        (ptr, s) = ptr.readBytes(32);
+        (ptr, r) = ptr.readFullBytes();
+        (ptr, s) = ptr.readFullBytes();
 
         // TODO: Ensure valid sig?
         // TODO: Bette way to call permit function?

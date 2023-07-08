@@ -21,11 +21,25 @@ library OpDecoderLib {
         }
     }
 
+    function readFullUint(uint256 self) internal pure returns (uint256 newPtr, uint256 x) {
+        assembly ("memory-safe") {
+            newPtr := add(self, 32)
+            x := calldataload(self)
+        }
+    }
+
     function readBytes(uint256 self, uint256 size) internal pure returns (uint256 newPtr, bytes32 x) {
         require(size >= 1 && size <= 32);
         assembly ("memory-safe") {
             newPtr := add(self, size)
             x := shr(shl(3, sub(32, size)), calldataload(self))
+        }
+    }
+
+    function readFullBytes(uint256 self) internal pure returns (uint256 newPtr, bytes32 x) {
+        assembly ("memory-safe") {
+            newPtr := add(self, 32)
+            x := calldataload(self)
         }
     }
 }
