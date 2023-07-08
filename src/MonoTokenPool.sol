@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity 0.8.20;
 
-import "forge-std/console.sol";
-
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
 import {IERC20Permit} from "openzeppelin/token/ERC20/extensions/IERC20Permit.sol";
@@ -113,20 +111,23 @@ contract MonoTokenPool is ReentrancyGuard {
 
     function _interpretOp(State memory state, uint256 ptr, uint256 op) internal returns (uint256) {
         uint256 mop = op & Ops.MASK_OP;
+        // TODO: Should be sorted by more common op to less common one
         if (mop == Ops.SWAP) {
             ptr = _swap(state, ptr, op);
-        } else if (mop == Ops.SEND_ALL) {
-            ptr = _sendAll(state, ptr, op);
-        } else if (mop == Ops.PULL_ALL) {
-            ptr = _pullAll(state, ptr, op);
-        } else if (mop == Ops.SEND) {
-            ptr = _send(state, ptr);
         } else if (mop == Ops.RECEIVE) {
             ptr = _receive(state, ptr, op);
-        } else if (mop == Ops.RECEIVE_ALL) {
-            ptr = _receiveAll(state, ptr, op);
+        } else if (mop == Ops.SEND_ALL) {
+            ptr = _sendAll(state, ptr, op);
+        } else if (mop == Ops.SEND_ALL_AND_UNWRAP) {
+            ptr = _sendAllAndUnwrap(state, ptr, op);
+        } else if (mop == Ops.PULL_ALL) {
+            ptr = _pullAll(state, ptr, op);
         } else if (mop == Ops.PERMIT_VIA_SIG) {
             ptr = _permitViaSig(ptr);
+        } else if (mop == Ops.SEND) {
+            ptr = _send(state, ptr);
+        } else if (mop == Ops.RECEIVE_ALL) {
+            ptr = _receiveAll(state, ptr, op);
         } else if (mop == Ops.ADD_LIQ) {
             ptr = _addLiquidity(state, ptr);
         } else if (mop == Ops.RM_LIQ) {
@@ -243,6 +244,34 @@ contract MonoTokenPool is ReentrancyGuard {
         (ptr, to) = ptr.readAddress();
         totalReservesOf[token] -= amount;
         token.safeTransfer(to, amount);
+
+        return ptr;
+    }
+
+    function _sendAllAndUnwrap(State memory state, uint256 ptr, uint256 op) internal returns (uint256) {
+        address token;
+        address to;
+
+        (ptr, token) = ptr.readAddress();
+        int256 delta = state.tokenDeltas.resetChange(token);
+        if (delta > 0) revert NegativeAmount();
+
+        uint256 minSend = 0;
+        uint256 maxSend = type(uint128).max;
+
+        if (op & Ops.ALL_MIN_BOUND != 0) (ptr, minSend) = ptr.readUint(16);
+        if (op & Ops.ALL_MAX_BOUND != 0) (ptr, maxSend) = ptr.readUint(16);
+
+        uint256 amount = uint256(-delta);
+        if (amount < minSend || amount > maxSend) revert AmountOutsideBounds();
+
+        (ptr, to) = ptr.readAddress();
+        // Decrease the reserve
+        totalReservesOf[token] -= amount;
+        // Withdraw the amount of token from the wrapped token
+        IWrappedNativeToken(token).withdraw(amount);
+        // Transfer the token
+        to.safeTransferETH(amount);
 
         return ptr;
     }
@@ -369,5 +398,12 @@ contract MonoTokenPool is ReentrancyGuard {
             mstore(0x20, token)
             pool.slot := keccak256(0x00, 0x40)
         }
+    }
+
+    /// @dev Just tell use that this smart contract can receive native tokens
+    receive() external payable {
+        // TODO: directly call _accountReceived()?
+        // TODO: Native token pool? If yes, how to handle multi wrapped erc20 tokens?
+        // TODO: Native token pool with direct handling of native transfer via msg.value diffs?
     }
 }

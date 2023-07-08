@@ -148,6 +148,32 @@ library MonoOpEncoderLib {
     }
 
     /**
+     * @notice Appends the send all & unwrap operation to the encoded operations
+     * @param self The encoded operations
+     * @param token The token to send from the pool
+     * @param to The recipient of the tokens
+     * @return The updated encoded operations
+     */
+    function appendSendAllAndUnwrap(bytes memory self, address token, address to)
+        internal
+        pure
+        returns (bytes memory)
+    {
+        uint256 op = Ops.SEND_ALL_AND_UNWRAP;
+        assembly ("memory-safe") {
+            let length := mload(self)
+            mstore(self, add(length, 41))
+            let initialOffset := add(add(self, 0x20), length)
+
+            mstore(initialOffset, shl(248, op))
+            mstore(add(initialOffset, 1), shl(96, token))
+            mstore(add(initialOffset, 21), shl(96, to))
+        }
+
+        return self;
+    }
+
+    /**
      * @notice Appends the receive operation to the encoded operations
      * @param self The encoded operations
      * @param token The token to be received by the user

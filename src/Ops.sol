@@ -18,17 +18,26 @@ library Ops {
 
     uint256 internal constant SWAP_HOP = 0x60;
 
+    /// @dev Send all the token due to a user from the pool
     uint256 internal constant SEND_ALL = 0x70;
-    uint256 internal constant RECEIVE_ALL = 0x80;
-    uint256 internal constant PULL_ALL = 0x90;
 
-    uint256 internal constant ALL_MIN_BOUND = 0x01;
-    uint256 internal constant ALL_MAX_BOUND = 0x02;
+    /// @dev Same as before but should be used with native token from a given pool
+    uint256 internal constant SEND_ALL_AND_UNWRAP = 0x80;
+
+    /// @dev Ask the user to give the required amount of token to the pool (using the IGiver interface)
+    uint256 internal constant RECEIVE_ALL = 0x90;
+
+    /// @dev Pull all the user token using the safeTransFrom erc20 function
+    uint256 internal constant PULL_ALL = 0xA0;
 
     /// @dev Permit token withdraw via EIP-2612 signature
-    uint256 internal constant PERMIT_VIA_SIG = 0xA0;
+    uint256 internal constant PERMIT_VIA_SIG = 0xB0;
 
-    /// @dev Native token specific operations
+    /// @dev The minimum amount of token for the `ALL` operations
+    uint256 internal constant ALL_MIN_BOUND = 0x01;
+    /// @dev The maximum amount of token for the `ALL` operations
+    uint256 internal constant ALL_MAX_BOUND = 0x02;
+
+    /// @dev Receive custom options
     uint256 internal constant RECEIVE_NATIVE_TOKEN = 0x01;
-    uint256 internal constant UNWRAP_AND_SEND_NATIVE = 0xC0;
 }

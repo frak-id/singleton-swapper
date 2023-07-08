@@ -213,7 +213,7 @@ contract MonoTokenNativePool is Test {
             .appendSwap(address(wNativeToken), true, amountToSwap)
             .appendPermitViaSig(address(baseToken), amountToSwap, deadline, v, r, s)
             .appendPullAll(address(baseToken))
-            .appendSendAll(address(wNativeToken), swapUser)
+            .appendSendAllAndUnwrap(address(wNativeToken), swapUser)
             .done();
 
         // Execute the swap
@@ -228,8 +228,8 @@ contract MonoTokenNativePool is Test {
         // Ensure the user has no more native token
         assertEq(baseToken.balanceOf(swapUser), 0);
         // Ensure the user has received the base token, but the fees are taken
-        assertGt(wNativeToken.balanceOf(swapUser), 0);
-        assertLt(wNativeToken.balanceOf(swapUser), amountToSwap);
+        assertGt(swapUser.balance, 0);
+        assertLt(swapUser.balance, amountToSwap);
     }
 
     function _postSwapReserveLog() internal view {
@@ -244,6 +244,7 @@ contract MonoTokenNativePool is Test {
         console.log("- User Balances");
         console.log(" - token base: %s", baseToken.balanceOf(user));
         console.log(" - token wrap: %s", wNativeToken.balanceOf(user));
+        console.log(" - blockchain: %s", user.balance);
     }
 
     function _newToken(string memory label) internal returns (MockPermitERC20 newToken) {
