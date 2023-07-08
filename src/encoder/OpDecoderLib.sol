@@ -5,6 +5,7 @@ pragma solidity ^0.8.0;
 /// @author philogy <https://github.com/philogy>
 /// @author KONFeature <https://github.com/KONFeature>
 /// @notice Library for decoding operations
+// TODO: Read full bytes & read full uint for gas optimization and less shifting
 library OpDecoderLib {
     function readAddress(uint256 self) internal pure returns (uint256 newPtr, address addr) {
         uint256 rawVal;
@@ -14,7 +15,15 @@ library OpDecoderLib {
 
     function readUint(uint256 self, uint256 size) internal pure returns (uint256 newPtr, uint256 x) {
         require(size >= 1 && size <= 32);
-        assembly {
+        assembly ("memory-safe") {
+            newPtr := add(self, size)
+            x := shr(shl(3, sub(32, size)), calldataload(self))
+        }
+    }
+
+    function readBytes(uint256 self, uint256 size) internal pure returns (uint256 newPtr, bytes32 x) {
+        require(size >= 1 && size <= 32);
+        assembly ("memory-safe") {
             newPtr := add(self, size)
             x := shr(shl(3, sub(32, size)), calldataload(self))
         }

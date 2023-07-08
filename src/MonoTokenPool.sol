@@ -3,6 +3,7 @@ pragma solidity 0.8.20;
 
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
+import {IERC20Permit} from "openzeppelin/token/ERC20/extensions/draft-IERC20Permit.sol";
 import {Pool} from "./libs/PoolLib.sol";
 import {Accounter} from "./libs/AccounterLib.sol";
 import {BPS} from "./libs/SwapLib.sol";
@@ -21,6 +22,9 @@ contract MonoTokenPool is ReentrancyGuard {
     using SafeTransferLib for address;
     using SafeCastLib for uint256;
     using OpDecoderLib for uint256;
+
+    /// @dev Native token address placeholder
+    address private constant NATIVE_ADDRESS = address(0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE);
 
     /* -------------------------------------------------------------------------- */
     /*                                   Storage                                  */
@@ -122,6 +126,8 @@ contract MonoTokenPool is ReentrancyGuard {
             ptr = _receiveAll(state, ptr, op);
         } else if (mop == Ops.PULL_ALL) {
             ptr = _pullAll(state, ptr, op);
+        } else if (mop == Ops.PERMIT_VIA_SIG) {
+            ptr = _permitViaSig(state, ptr, op);
         } else {
             revert InvalidOp(op);
         }
@@ -269,6 +275,28 @@ contract MonoTokenPool is ReentrancyGuard {
 
         token.safeTransferFrom(msg.sender, address(this), amount);
         _accountReceived(state, token);
+
+        return ptr;
+    }
+
+    function _permitViaSig(State memory state, uint256 ptr, uint256 op) internal returns (uint256) {
+        address token;
+        uint256 amount;
+        uint256 deadline;
+        uint256 v;
+        bytes32 r;
+        bytes32 s;
+
+        (ptr, token) = ptr.readAddress();
+        (ptr, amount) = ptr.readUint(16);
+        (ptr, deadline) = ptr.readUint(8);
+        (ptr, v) = ptr.readUint(1);
+        (ptr, r) = ptr.readBytes(32);
+        (ptr, s) = ptr.readBytes(32);
+
+        // TODO: Ensure valid sig?
+        // TODO: Bette way to call permit function?
+        IERC20Permit(token).permit(msg.sender, address(this), amount, deadline, uint8(v), r, s);
 
         return ptr;
     }
