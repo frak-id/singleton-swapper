@@ -148,6 +148,36 @@ library MonoOpEncoderLib {
     }
 
     /**
+     * @notice Appends the send all operation to the encoded operations
+     * @param self The encoded operations
+     * @param token The token to send from the pool
+     * @param to The recipient of the tokens
+     * @param minAmount The min amount of token to send
+     * @param maxAmount The max amount of token to send
+     * @return The updated encoded operations
+     */
+    function appendSendAllWithLimit(bytes memory self, address token, address to, uint256 minAmount, uint256 maxAmount)
+        internal
+        pure
+        returns (bytes memory)
+    {
+        uint256 op = Ops.SEND_ALL + Ops.ALL_MIN_BOUND + Ops.ALL_MAX_BOUND;
+        assembly ("memory-safe") {
+            let length := mload(self)
+            mstore(self, add(length, 73))
+            let initialOffset := add(add(self, 0x20), length)
+
+            mstore(initialOffset, shl(248, op))
+            mstore(add(initialOffset, 1), shl(96, token)) // address -> bytes20
+            mstore(add(initialOffset, 21), shl(128, minAmount)) // uint128 -> bytes16
+            mstore(add(initialOffset, 37), shl(128, maxAmount)) // uint128 -> bytes16
+            mstore(add(initialOffset, 53), shl(96, to)) // address -> bytes20
+        }
+
+        return self;
+    }
+
+    /**
      * @notice Appends the send all & unwrap operation to the encoded operations
      * @param self The encoded operations
      * @param token The token to send from the pool

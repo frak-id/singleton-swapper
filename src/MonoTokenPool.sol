@@ -336,8 +336,6 @@ contract MonoTokenPool is ReentrancyGuard {
         (ptr, r) = ptr.readFullBytes();
         (ptr, s) = ptr.readFullBytes();
 
-        // TODO: Ensure valid sig?
-        // TODO: Bette way to call permit function?
         // TODO: SOC another contract performing the permit and wrapping operations?
         // TODO: Like a pre swap hook? Or a pre swap execution layer with dedicated commands?
         IERC20Permit(token).permit(msg.sender, address(this), amount, deadline, uint8(v), r, s);
@@ -365,6 +363,7 @@ contract MonoTokenPool is ReentrancyGuard {
     /*                           External view method's                           */
     /* -------------------------------------------------------------------------- */
 
+    /// @dev Returns the pool for the given 'token'.
     function getPool(address token)
         external
         view
@@ -376,8 +375,21 @@ contract MonoTokenPool is ReentrancyGuard {
         totalLiquidity = pool.totalLiquidity;
     }
 
+    /// @dev Returns the position for the given 'token' and 'owner'.
     function getPosition(address token, address owner) external view returns (uint256) {
         return _getPool(token).positions[owner];
+    }
+
+    /// @dev Returns the amount of token that can be swapped for the given 'amount'.
+    function estimateSwap(address token, uint256 inAmount, bool zeroForOne) external view returns (uint256 amountOut) {
+        Pool storage pool = _getPool(token);
+        uint256 reserves0 = pool.reserves0;
+        uint256 reserves1 = pool.reserves1;
+        if (zeroForOne) {
+            amountOut = reserves1 - (reserves0 * reserves1) / (reserves0 + inAmount * (BPS - FEE_BPS) / BPS);
+        } else {
+            amountOut = reserves0 - (reserves0 * reserves1) / (reserves1 + inAmount * (BPS - FEE_BPS) / BPS);
+        }
     }
 
     /* -------------------------------------------------------------------------- */

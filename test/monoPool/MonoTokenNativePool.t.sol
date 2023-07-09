@@ -84,7 +84,7 @@ contract MonoTokenNativePool is Test {
     }
 
     /// @dev Test the swap method with native token
-    function test_swapNativeOk() public {
+    function test_swapNativeViaPullOk() public {
         // Create our swap user
         address swapUser = _newUser("swapUser");
 
@@ -128,7 +128,7 @@ contract MonoTokenNativePool is Test {
     }
 
     /// @dev Test the swap method with native token
-    function test_swapNativeViaWrap() public {
+    function test_swapNativeViaReceiveOk() public {
         // Create our swap user
         address swapUser = _newUser("swapUser");
 
@@ -170,7 +170,62 @@ contract MonoTokenNativePool is Test {
     }
 
     /// @dev Test the swap method with native token
-    function test_swapPermitOk() public {
+    function test_swapNativeWithSendLimitOk() public {
+        // Create our swap user
+        address swapUser = _newUser("swapUser");
+
+        // Amount of native token to swap
+        uint256 amountToSwap = 1e18;
+
+        // Allow the pool to access the user founds
+        vm.deal(swapUser, amountToSwap);
+        vm.startPrank(swapUser);
+        vm.stopPrank();
+
+        // Print initial state
+        console.log("=== Before swap ===");
+        _postSwapReserveLog();
+        _postSwapBalanceLog(swapUser);
+
+        // Slippage max of 0.5%, so estimate amount result
+        uint256 estimateAmount = pool.estimateSwap(address(wNativeToken), amountToSwap, false);
+        // Then, 0.5% of estimate amount for min and max
+        uint256 minAmount = (estimateAmount * 95) / 100;
+        uint256 maxAmount = (estimateAmount * 105) / 100;
+
+        console.log("=== Estimation ===");
+        console.log("- Estimation: %s", estimateAmount);
+        console.log("- Min amount: %s", minAmount);
+        console.log("- Max amount: %s", maxAmount);
+
+        // Build the swap operations
+        // forgefmt: disable-next-item
+        bytes memory program = BaseEncoderLib.init(4)
+            .appendSwap(address(wNativeToken), false, amountToSwap)
+            .appendReceive(address(wNativeToken), amountToSwap, true)
+            .appendSendAllWithLimit(address(baseToken), swapUser, minAmount, maxAmount)
+            .done();
+        // From: 106661
+        // To  : 9223372036854754743
+
+        // Execute the swap
+        vm.prank(swapUser);
+        pool.execute{value: amountToSwap}(program);
+
+        // Print final pool state
+        console.log("=== Final Pool State ===");
+        _postSwapReserveLog();
+        _postSwapBalanceLog(swapUser);
+
+        // Ensure the user has no more native token
+        assertEq(wNativeToken.balanceOf(swapUser), 0);
+        // Ensure the user has received the base token, but the fees are taken
+        assertGt(baseToken.balanceOf(swapUser), 0);
+        assertLt(baseToken.balanceOf(swapUser), amountToSwap);
+    }
+
+    /// @dev Test the swap method with native token
+    function test_swapTokenViaPermitOk() public {
         // Create our swap user
         (address swapUser, uint256 privateKey) = _newUserWithPrivKey("swapUser");
 

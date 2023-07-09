@@ -9,7 +9,6 @@ import {BaseEncoderLib} from "src/encoder/BaseEncoderLib.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {MockERC20} from "../mock/MockERC20.sol";
 import {ERC20} from "openzeppelin/token/ERC20/ERC20.sol";
-import {MockGiver} from "../mock/MockGiver.sol";
 
 /// @title MonoTokenPoolBpsTest
 /// @author KONFeature <https://github.com/KONFeature>
@@ -34,11 +33,11 @@ contract MonoTokenPoolBpsTest is Test {
     /**
      * @notice Test swap with single operation
      */
-    function testMain() public {
+    function test_createPoolSwapAndRemoveOk() public {
         MockERC20 targetToken = _newToken("targetToken");
 
-        address liquidityProvider = address(_newGiver("liquidityProvider"));
-        address swapUser = address(_newGiver("swapUser"));
+        address liquidityProvider = _newUser("liquidityProvider");
+        address swapUser = _newUser("swapUser");
 
         uint256 initialDepositToken0 = 10e18;
         uint256 initialDepositToken1 = 10e18;
@@ -46,12 +45,18 @@ contract MonoTokenPoolBpsTest is Test {
         baseToken.mint(liquidityProvider, initialDepositToken0);
         targetToken.mint(liquidityProvider, initialDepositToken1);
 
+        // Allow the pool to pull the tokens
+        vm.startPrank(liquidityProvider);
+        baseToken.approve(address(pool), initialDepositToken0);
+        targetToken.approve(address(pool), initialDepositToken1);
+        vm.stopPrank();
+
         // Append initial liquidity to the pool
         // forgefmt: disable-next-item
         bytes memory program = BaseEncoderLib.init(4)
             .appendAddLiquidity(address(targetToken), liquidityProvider, initialDepositToken0, initialDepositToken1)
-            .appendReceive(address(baseToken), initialDepositToken0, false)
-            .appendReceive(address(targetToken), initialDepositToken1, false)
+            .appendPullAll(address(baseToken))
+            .appendPullAll(address(targetToken))
             .done();
 
         vm.prank(liquidityProvider);
@@ -66,7 +71,7 @@ contract MonoTokenPoolBpsTest is Test {
         _swap0to1(address(targetToken), swapUser, baseToken.balanceOf(swapUser));
         _swap1to0(address(targetToken), swapUser, targetToken.balanceOf(swapUser));
         _swap0to1(address(targetToken), swapUser, baseToken.balanceOf(swapUser));
-        _swap1to0Pull(address(targetToken), swapUser, targetToken.balanceOf(swapUser));
+        _swap1to0(address(targetToken), swapUser, targetToken.balanceOf(swapUser));
 
         // Tell the liquidityProvider to withdraw of all his founds
         // forgefmt: disable-next-item
@@ -104,11 +109,16 @@ contract MonoTokenPoolBpsTest is Test {
         // Compute the out amount
         uint256 outAmount = reserves1 - (reserves0 * reserves1) / (reserves0 + inAmount * (1e4 - bps) / 1e4);
 
+        // Approve the pool to pull the tokens
+        vm.startPrank(user);
+        address(baseToken).safeApprove(address(pool), inAmount);
+        vm.stopPrank();
+
         // Build the swap op
         // forgefmt: disable-next-item
         bytes memory operations = BaseEncoderLib.init(4)
             .appendSwap(token, true, inAmount)
-            .appendReceive(address(baseToken), inAmount, false)
+            .appendPullAll(address(baseToken))
             .appendSend(token, user, outAmount)
             .done();
 
@@ -132,36 +142,10 @@ contract MonoTokenPoolBpsTest is Test {
         // Compute the out amount
         uint256 outAmount = reserves0 - (reserves0 * reserves1) / (reserves1 + inAmount * (1e4 - bps) / 1e4);
 
-        // Build the swap op
-        // forgefmt: disable-next-item
-        bytes memory operations = BaseEncoderLib.init(4)
-            .appendSwap(token, false, inAmount)
-            .appendReceive(token, inAmount, false)
-            .appendSend(address(baseToken), user, outAmount)
-            .done();
-
-        vm.prank(user);
-        pool.execute(operations);
-
-        console.log("= Post 1->0 swap of %s =", toSwap);
-        _postSwapAmountLog(inAmount, outAmount);
-        _postSwapBalanceLog(token, user);
-        _postSwapReserveLog(token);
-        console.log("");
-    }
-
-    function _swap1to0Pull(address token, address user, uint256 toSwap) internal {
-        (uint128 reserves0, uint128 reserves1,) = pool.getPool(token);
-
-        // Perform a second swap
-        uint256 inAmount = toSwap;
-
-        // Compute the out amount
-        uint256 outAmount = reserves0 - (reserves0 * reserves1) / (reserves1 + inAmount * (1e4 - bps) / 1e4);
-
-        // Transfer the in amount
-        vm.prank(user);
-        ERC20(token).increaseAllowance(address(pool), inAmount);
+        // Approve the pool to pull the tokens
+        vm.startPrank(user);
+        token.safeApprove(address(pool), inAmount);
+        vm.stopPrank();
 
         // Build the swap op
         // forgefmt: disable-next-item
@@ -174,7 +158,7 @@ contract MonoTokenPoolBpsTest is Test {
         vm.prank(user);
         pool.execute(operations);
 
-        console.log("= Post 1->0 swap via pull of %s =", toSwap);
+        console.log("= Post 1->0 swap of %s =", toSwap);
         _postSwapAmountLog(inAmount, outAmount);
         _postSwapBalanceLog(token, user);
         _postSwapReserveLog(token);
@@ -206,8 +190,8 @@ contract MonoTokenPoolBpsTest is Test {
         vm.label(address(newToken), label);
     }
 
-    function _newGiver(string memory label) internal returns (MockGiver newGiver) {
-        newGiver = new MockGiver();
-        vm.label(address(newGiver), label);
+    function _newUser(string memory label) internal returns (address swapUser) {
+        swapUser = address(bytes20(keccak256(abi.encode(label))));
+        vm.label(swapUser, label);
     }
 }
