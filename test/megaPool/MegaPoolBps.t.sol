@@ -7,9 +7,9 @@ import {MegaPool} from "src/MegaPool.sol";
 import {BaseEncoderLib} from "src/encoder/BaseEncoderLib.sol";
 import {MegaOpEncoderLib} from "src/encoder/MegaOpEncoderLib.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
-import {MockERC20} from "./mock/MockERC20.sol";
+import {MockERC20} from "../mock/MockERC20.sol";
 import {ERC20} from "openzeppelin/token/ERC20/ERC20.sol";
-import {MockGiver} from "./mock/MockGiver.sol";
+import {MockGiver} from "../mock/MockGiver.sol";
 
 /// @title MegaPoolTest
 /// @author KONFeature <https://github.com/KONFeature>

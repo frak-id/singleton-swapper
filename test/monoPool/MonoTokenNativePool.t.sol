@@ -163,10 +163,10 @@ contract MonoTokenNativePool is Test {
         _postSwapBalanceLog(swapUser);
 
         // Ensure the user has no more native token
-        // assertEq(wNativeToken.balanceOf(swapUser), 0);
+        assertEq(wNativeToken.balanceOf(swapUser), 0);
         // Ensure the user has received the base token, but the fees are taken
-        // assertGt(baseToken.balanceOf(swapUser), 0);
-        // assertLt(baseToken.balanceOf(swapUser), amountToSwap);
+        assertGt(baseToken.balanceOf(swapUser), 0);
+        assertLt(baseToken.balanceOf(swapUser), amountToSwap);
     }
 
     /// @dev Test the swap method with native token

@@ -4,7 +4,7 @@ pragma solidity 0.8.20;
 import {Test} from "forge-std/Test.sol";
 import {MegaPool} from "src/MegaPool.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
-import {MockERC20} from "./mock/MockERC20.sol";
+import {MockERC20} from "../mock/MockERC20.sol";
 import {IGiver} from "src/interfaces/IGiver.sol";
 import {BaseEncoderLib} from "src/encoder/BaseEncoderLib.sol";
 import {MegaOpEncoderLib} from "src/encoder/MegaOpEncoderLib.sol";
