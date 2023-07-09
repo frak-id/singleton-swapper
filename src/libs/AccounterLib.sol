@@ -45,7 +45,7 @@ library AccounterLib {
     }
 
     function _toKey(address asset) private pure returns (uint256 k) {
-        assembly {
+        assembly ("memory-safe") {
             k := asset
         }
     }

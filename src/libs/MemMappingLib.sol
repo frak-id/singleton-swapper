@@ -14,7 +14,7 @@ using MemMappingLib for MapKVPair global;
 /// @dev The free mem pointer is moved after the the mam allocated size (defined during the init)
 library MemMappingLib {
     function init(uint256 z) internal pure returns (MemMapping map) {
-        assembly {
+        assembly ("memory-safe") {
             // Allocate memory: 1 + 2 * size
             map := mload(0x40)
             mstore(map, z)
@@ -27,31 +27,31 @@ library MemMappingLib {
     }
 
     function size(MemMapping map) internal pure returns (uint256 z) {
-        assembly {
+        assembly ("memory-safe") {
             z := mload(map)
         }
     }
 
     function key(MapKVPair kvPair) internal pure returns (uint256 k) {
-        assembly {
+        assembly ("memory-safe") {
             k := mload(kvPair)
         }
     }
 
     function value(MapKVPair kvPair) internal pure returns (uint256 v) {
-        assembly {
+        assembly ("memory-safe") {
             v := mload(add(kvPair, 0x20))
         }
     }
 
     function setValue(MapKVPair kvPair, uint256 v) internal pure {
-        assembly {
+        assembly ("memory-safe") {
             mstore(add(kvPair, 0x20), v)
         }
     }
 
     function set(MapKVPair kvPair, uint256 k, uint256 v) internal pure {
-        assembly {
+        assembly ("memory-safe") {
             mstore(kvPair, k)
             mstore(add(kvPair, 0x20), v)
         }
@@ -60,7 +60,7 @@ library MemMappingLib {
     function getPair(MemMapping map, uint256 k) internal pure returns (MapKVPair kvPair) {
         require(k != 0);
 
-        assembly {
+        assembly ("memory-safe") {
             let z := mload(map)
             let baseOffset := add(map, 0x20)
             let i := mod(k, z)

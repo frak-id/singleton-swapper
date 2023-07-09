@@ -3,38 +3,50 @@ pragma solidity 0.8.20;
 
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
+import {IERC20Permit} from "openzeppelin/token/ERC20/extensions/IERC20Permit.sol";
 import {Pool} from "./libs/PoolLib.sol";
 import {Accounter} from "./libs/AccounterLib.sol";
 import {BPS} from "./libs/SwapLib.sol";
 import {Ops} from "./Ops.sol";
 
+import {IWrappedNativeToken} from "./interfaces/IWrappedNativeToken.sol";
 import {IGiver} from "./interfaces/IGiver.sol";
 import {ReentrancyGuard} from "./utils/ReentrancyGuard.sol";
 import {OpDecoderLib} from "./encoder/OpDecoderLib.sol";
 
-/// @title MegaPool
+/// @title MonoTokenPool
 /// @author philogy <https://github.com/philogy>
-/// @author KONFeature <https://github.com/KONFeature>
-/// @notice The multi pool contract that handles all the pools and their actions
-contract MegaPool is ReentrancyGuard {
+/// @notice Same as the original MegaTokenPool, but with a single ERC_20 base token (useful for project that want a pool for their internal swap)
+/// @dev baseToken as 0 and 1 as target pool token
+/// @dev Every delta, reserves and liquidity follow this rule
+contract MonoTokenPool is ReentrancyGuard {
     using SafeTransferLib for address;
     using SafeCastLib for uint256;
     using OpDecoderLib for uint256;
+
+    /// @dev Native token address placeholder
+    address private constant NATIVE_ADDRESS = address(0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE);
 
     /* -------------------------------------------------------------------------- */
     /*                                   Storage                                  */
     /* -------------------------------------------------------------------------- */
 
+    /// @dev The fee that will be taken from each swaps
     uint256 public immutable FEE_BPS;
 
-    mapping(address poolKey => Pool pool) internal pools;
+    /// @dev The base token we will use for all the pools
+    address private immutable baseToken;
+
+    /// @dev The mapping of all the pools per target token
+    mapping(address token => Pool pool) internal pools;
+
+    /// @dev The mapping of our reserves per tokens
     mapping(address token => uint256 totalReserve) public totalReservesOf;
 
     /* -------------------------------------------------------------------------- */
     /*                               Custom error's                               */
     /* -------------------------------------------------------------------------- */
 
-    error InvalidTokens();
     error InvalidOp(uint256 op);
     error LeftoverDelta();
     error InvalidGive();
@@ -42,9 +54,11 @@ contract MegaPool is ReentrancyGuard {
     error NegativeReceive();
     error AmountOutsideBounds();
 
-    constructor(uint256 feeBps) {
+    constructor(address token, uint256 feeBps) {
         require(feeBps < BPS);
+        require(token != address(0));
         FEE_BPS = feeBps;
+        baseToken = token;
     }
 
     /**
@@ -69,7 +83,7 @@ contract MegaPool is ReentrancyGuard {
      *    n bytes: opcode data
      * Refer to the function documentation for details on individual operations.
      */
-    function execute(bytes calldata program) external nonReentrant {
+    function execute(bytes calldata program) external payable nonReentrant {
         (uint256 ptr, uint256 endPtr) = _getPc(program);
 
         State memory state;
@@ -97,26 +111,27 @@ contract MegaPool is ReentrancyGuard {
 
     function _interpretOp(State memory state, uint256 ptr, uint256 op) internal returns (uint256) {
         uint256 mop = op & Ops.MASK_OP;
+        // TODO: Should be sorted by more common op to less common one
         if (mop == Ops.SWAP) {
             ptr = _swap(state, ptr, op);
+        } else if (mop == Ops.RECEIVE) {
+            ptr = _receive(state, ptr, op);
+        } else if (mop == Ops.SEND_ALL) {
+            ptr = _sendAll(state, ptr, op);
+        } else if (mop == Ops.SEND_ALL_AND_UNWRAP) {
+            ptr = _sendAllAndUnwrap(state, ptr, op);
+        } else if (mop == Ops.PULL_ALL) {
+            ptr = _pullAll(state, ptr, op);
+        } else if (mop == Ops.PERMIT_VIA_SIG) {
+            ptr = _permitViaSig(ptr);
+        } else if (mop == Ops.SEND) {
+            ptr = _send(state, ptr);
+        } else if (mop == Ops.RECEIVE_ALL) {
+            ptr = _receiveAll(state, ptr, op);
         } else if (mop == Ops.ADD_LIQ) {
             ptr = _addLiquidity(state, ptr);
         } else if (mop == Ops.RM_LIQ) {
             ptr = _removeLiquidity(state, ptr);
-        } else if (mop == Ops.SEND) {
-            ptr = _send(state, ptr);
-        } else if (mop == Ops.RECEIVE) {
-            ptr = _receive(state, ptr);
-        } else if (mop == Ops.SWAP_HEAD) {
-            ptr = _swapHead(state, ptr, op);
-        } else if (mop == Ops.SWAP_HOP) {
-            ptr = _swapHop(state, ptr);
-        } else if (mop == Ops.SEND_ALL) {
-            ptr = _sendAll(state, ptr, op);
-        } else if (mop == Ops.RECEIVE_ALL) {
-            ptr = _receiveAll(state, ptr, op);
-        } else if (mop == Ops.PULL_ALL) {
-            ptr = _pullAll(state, ptr, op);
         } else {
             revert InvalidOp(op);
         }
@@ -125,54 +140,48 @@ contract MegaPool is ReentrancyGuard {
     }
 
     function _swap(State memory state, uint256 ptr, uint256 op) internal returns (uint256) {
-        address token0;
-        address token1;
+        address token;
         uint256 amount;
-        (ptr, token0) = ptr.readAddress();
-        (ptr, token1) = ptr.readAddress();
+        (ptr, token) = ptr.readAddress();
         bool zeroForOne = (op & Ops.SWAP_DIR) != 0;
         (ptr, amount) = ptr.readUint(16);
 
-        (int256 delta0, int256 delta1) = _getPool(token0, token1).swap(zeroForOne, amount, FEE_BPS);
+        (int256 delta0, int256 delta1) = _getPool(token).swap(zeroForOne, amount, FEE_BPS);
 
-        state.tokenDeltas.accountChange(token0, delta0);
-        state.tokenDeltas.accountChange(token1, delta1);
+        state.tokenDeltas.accountChange(baseToken, delta0);
+        state.tokenDeltas.accountChange(token, delta1);
 
         return ptr;
     }
 
     function _addLiquidity(State memory state, uint256 ptr) internal returns (uint256) {
-        address token0;
-        address token1;
+        address token;
         address to;
         uint256 maxAmount0;
         uint256 maxAmount1;
-        (ptr, token0) = ptr.readAddress();
-        (ptr, token1) = ptr.readAddress();
+        (ptr, token) = ptr.readAddress();
         (ptr, to) = ptr.readAddress();
         (ptr, maxAmount0) = ptr.readUint(16);
         (ptr, maxAmount1) = ptr.readUint(16);
 
-        (, int256 delta0, int256 delta1) = _getPool(token0, token1).addLiquidity(to, maxAmount0, maxAmount1);
+        (, int256 delta0, int256 delta1) = _getPool(token).addLiquidity(to, maxAmount0, maxAmount1);
 
-        state.tokenDeltas.accountChange(token0, delta0);
-        state.tokenDeltas.accountChange(token1, delta1);
+        state.tokenDeltas.accountChange(baseToken, delta0);
+        state.tokenDeltas.accountChange(token, delta1);
 
         return ptr;
     }
 
     function _removeLiquidity(State memory state, uint256 ptr) internal returns (uint256) {
-        address token0;
-        address token1;
+        address token;
         uint256 liq;
-        (ptr, token0) = ptr.readAddress();
-        (ptr, token1) = ptr.readAddress();
-        (ptr, liq) = ptr.readUint(32);
+        (ptr, token) = ptr.readAddress();
+        (ptr, liq) = ptr.readFullUint();
 
-        (int256 delta0, int256 delta1) = _getPool(token0, token1).removeLiquidity(msg.sender, liq);
+        (int256 delta0, int256 delta1) = _getPool(token).removeLiquidity(msg.sender, liq);
 
-        state.tokenDeltas.accountChange(token0, delta0);
-        state.tokenDeltas.accountChange(token1, delta1);
+        state.tokenDeltas.accountChange(baseToken, delta0);
+        state.tokenDeltas.accountChange(token, delta1);
 
         return ptr;
     }
@@ -193,51 +202,24 @@ contract MegaPool is ReentrancyGuard {
         return ptr;
     }
 
-    function _receive(State memory state, uint256 ptr) internal returns (uint256) {
+    function _receive(State memory state, uint256 ptr, uint256 op) internal returns (uint256) {
         address token;
         uint256 amount;
 
         (ptr, token) = ptr.readAddress();
         (ptr, amount) = ptr.readUint(16);
 
-        _receive(state, token, amount);
+        // In the case of a native token reception
+        if (op & Ops.RECEIVE_NATIVE_TOKEN != 0) {
+            // Try to deposit the native token
+            IWrappedNativeToken(token).deposit{value: amount}();
 
-        return ptr;
-    }
-
-    function _swapHead(State memory state, uint256 ptr, uint256 op) internal returns (uint256) {
-        address token0;
-        address token1;
-        uint256 amount;
-        (ptr, token0) = ptr.readAddress();
-        (ptr, token1) = ptr.readAddress();
-        (ptr, amount) = ptr.readUint(16);
-
-        bool zeroForOne = (op & Ops.SWAP_DIR) != 0;
-
-        (int256 delta0, int256 delta1) = _getPool(token0, token1).swap(zeroForOne, amount, FEE_BPS);
-        state.lastToken = zeroForOne ? token1 : token0;
-
-        state.tokenDeltas.accountChange(token0, delta0);
-        state.tokenDeltas.accountChange(token1, delta1);
-
-        return ptr;
-    }
-
-    function _swapHop(State memory state, uint256 ptr) internal returns (uint256) {
-        address lastToken = state.lastToken;
-        address nextToken;
-        (ptr, nextToken) = ptr.readAddress();
-
-        (address token0, address token1, bool zeroForOne) =
-            nextToken > lastToken ? (lastToken, nextToken, true) : (nextToken, lastToken, false);
-
-        int256 delta = state.tokenDeltas.resetChange(lastToken);
-        if (delta > 0) revert NegativeAmount();
-
-        (int256 delta0, int256 delta1) = _getPool(token0, token1).swap(zeroForOne, uint256(-delta), FEE_BPS);
-        state.lastToken = nextToken;
-        state.tokenDeltas.accountChange(nextToken, zeroForOne ? delta1 : delta0);
+            // Tell that we received the token
+            _accountReceived(state, token);
+        } else {
+            // Otherwise, we just account for the received token
+            _receive(state, token, amount);
+        }
 
         return ptr;
     }
@@ -262,6 +244,34 @@ contract MegaPool is ReentrancyGuard {
         (ptr, to) = ptr.readAddress();
         totalReservesOf[token] -= amount;
         token.safeTransfer(to, amount);
+
+        return ptr;
+    }
+
+    function _sendAllAndUnwrap(State memory state, uint256 ptr, uint256 op) internal returns (uint256) {
+        address token;
+        address to;
+
+        (ptr, token) = ptr.readAddress();
+        int256 delta = state.tokenDeltas.resetChange(token);
+        if (delta > 0) revert NegativeAmount();
+
+        uint256 minSend = 0;
+        uint256 maxSend = type(uint128).max;
+
+        if (op & Ops.ALL_MIN_BOUND != 0) (ptr, minSend) = ptr.readUint(16);
+        if (op & Ops.ALL_MAX_BOUND != 0) (ptr, maxSend) = ptr.readUint(16);
+
+        uint256 amount = uint256(-delta);
+        if (amount < minSend || amount > maxSend) revert AmountOutsideBounds();
+
+        (ptr, to) = ptr.readAddress();
+        // Decrease the reserve
+        totalReservesOf[token] -= amount;
+        // Withdraw the amount of token from the wrapped token
+        IWrappedNativeToken(token).withdraw(amount);
+        // Transfer the token
+        to.safeTransferETH(amount);
 
         return ptr;
     }
@@ -311,6 +321,28 @@ contract MegaPool is ReentrancyGuard {
         return ptr;
     }
 
+    function _permitViaSig(uint256 ptr) internal returns (uint256) {
+        address token;
+        uint256 amount;
+        uint256 deadline;
+        uint256 v;
+        bytes32 r;
+        bytes32 s;
+
+        (ptr, token) = ptr.readAddress();
+        (ptr, amount) = ptr.readUint(16);
+        (ptr, deadline) = ptr.readUint(6);
+        (ptr, v) = ptr.readUint(1);
+        (ptr, r) = ptr.readFullBytes();
+        (ptr, s) = ptr.readFullBytes();
+
+        // TODO: SOC another contract performing the permit and wrapping operations?
+        // TODO: Like a pre swap hook? Or a pre swap execution layer with dedicated commands?
+        IERC20Permit(token).permit(msg.sender, address(this), amount, deadline, uint8(v), r, s);
+
+        return ptr;
+    }
+
     function _receive(State memory state, address token, uint256 amount) internal {
         if (IGiver(msg.sender).give(token, amount) != IGiver.give.selector) {
             revert InvalidGive();
@@ -331,19 +363,33 @@ contract MegaPool is ReentrancyGuard {
     /*                           External view method's                           */
     /* -------------------------------------------------------------------------- */
 
-    function getPool(address token0, address token1)
+    /// @dev Returns the pool for the given 'token'.
+    function getPool(address token)
         external
         view
         returns (uint128 reserves0, uint128 reserves1, uint256 totalLiquidity)
     {
-        Pool storage pool = _getPool(token0, token1);
+        Pool storage pool = _getPool(token);
         reserves0 = pool.reserves0;
         reserves1 = pool.reserves1;
         totalLiquidity = pool.totalLiquidity;
     }
 
-    function getPosition(address token0, address token1, address owner) external view returns (uint256) {
-        return _getPool(token0, token1).positions[owner];
+    /// @dev Returns the position for the given 'token' and 'owner'.
+    function getPosition(address token, address owner) external view returns (uint256) {
+        return _getPool(token).positions[owner];
+    }
+
+    /// @dev Returns the amount of token that can be swapped for the given 'amount'.
+    function estimateSwap(address token, uint256 inAmount, bool zeroForOne) external view returns (uint256 amountOut) {
+        Pool storage pool = _getPool(token);
+        uint256 reserves0 = pool.reserves0;
+        uint256 reserves1 = pool.reserves1;
+        if (zeroForOne) {
+            amountOut = reserves1 - (reserves0 * reserves1) / (reserves0 + inAmount * (BPS - FEE_BPS) / BPS);
+        } else {
+            amountOut = reserves0 - (reserves0 * reserves1) / (reserves1 + inAmount * (BPS - FEE_BPS) / BPS);
+        }
     }
 
     /* -------------------------------------------------------------------------- */
@@ -351,22 +397,25 @@ contract MegaPool is ReentrancyGuard {
     /* -------------------------------------------------------------------------- */
 
     function _getPc(bytes calldata program) internal pure returns (uint256 ptr, uint256 endPtr) {
-        assembly {
+        assembly ("memory-safe") {
             ptr := program.offset
             endPtr := add(ptr, program.length)
         }
     }
 
-    function _getPool(address token0, address token1) internal pure returns (Pool storage pool) {
-        if (token0 >= token1) revert InvalidTokens();
-
-        assembly {
-            let freeMem := mload(0x40)
+    /// @dev Returns the pool for the given 'token'.
+    function _getPool(address token) internal pure returns (Pool storage pool) {
+        assembly ("memory-safe") {
             mstore(0x00, pools.slot)
-            mstore(0x20, token0)
-            mstore(0x40, token1)
-            pool.slot := keccak256(0x00, 0x60)
-            mstore(0x40, freeMem)
+            mstore(0x20, token)
+            pool.slot := keccak256(0x00, 0x40)
         }
+    }
+
+    /// @dev Just tell use that this smart contract can receive native tokens
+    receive() external payable {
+        // TODO: directly call _accountReceived()?
+        // TODO: Native token pool? If yes, how to handle multi wrapped erc20 tokens?
+        // TODO: Native token pool with direct handling of native transfer via msg.value diffs?
     }
 }
