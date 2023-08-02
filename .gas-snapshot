@@ -1,6 +1,6 @@
 AccounterLibTest:testAccounter() (gas: 1913)
 AccounterLibTest:testLockAccounter() (gas: 67349)
-MegaPoolBpsTest:testMain() (gas: 2563922)
+MegaPoolBpsTest:testMain() (gas: 2563998)
 MegaPoolTest:testMain() (gas: 2077394)
 MegaPoolTest:testMultiHop() (gas: 4212408)
 MemMappingTest:testSimpleMap() (gas: 3018)
