@@ -291,13 +291,11 @@ contract MonoTokenNativePool is Test {
     }
 
     function _postSwapReserveLog() internal view {
-        (uint128 reserves0, uint128 reserves1, uint256 totalLiquidity, uint128 feeToken0, uint128 feeToken1) =
+        (uint128 reserves0, uint128 reserves1, uint256 totalLiquidity) =
             pool.getPool(address(wNativeToken));
         console.log("- Pool");
         console.log(" - reserves0: %s", reserves0);
         console.log(" - reserves1: %s", reserves1);
-        console.log(" - feeToken0: %s", feeToken0);
-        console.log(" - feeToken1: %s", feeToken1);
         console.log(" - totalLiquidity: %s", totalLiquidity);
     }
 

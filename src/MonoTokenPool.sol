@@ -49,6 +49,9 @@ contract MonoTokenPool is ReentrancyGuard {
     /// @dev The mapping of our reserves per tokens
     mapping(address token => uint256 totalReserve) public totalReservesOf;
 
+    /// @dev The mapping of our reserves per tokens
+    mapping(address token => uint256 pendingFees) public protocolFees;
+
     /* -------------------------------------------------------------------------- */
     /*                               Custom error's                               */
     /* -------------------------------------------------------------------------- */
@@ -183,7 +186,13 @@ contract MonoTokenPool is ReentrancyGuard {
         int256 delta1;
         // Take the fee if needed
         if (swapFeePerThousands > 0) {
-            (delta0, delta1) = _getPool(token).swap(zeroForOne, amount, FEE_BPS, swapFeePerThousands);
+            uint256 protocolFeeToken0;
+            uint256 protocolFeeToken1;
+            (delta0, delta1, protocolFeeToken0, protocolFeeToken1) =
+                _getPool(token).swap(zeroForOne, amount, FEE_BPS, swapFeePerThousands);
+
+            protocolFees[baseToken] += protocolFeeToken0;
+            protocolFees[token] += protocolFeeToken1;
         } else {
             (delta0, delta1) = _getPool(token).swap(zeroForOne, amount, FEE_BPS);
         }
@@ -404,25 +413,16 @@ contract MonoTokenPool is ReentrancyGuard {
 
         (ptr, token) = ptr.readAddress();
 
-        // Get the pool, and thus the amount to claim
-        Pool storage pool = _getPool(token);
-
         // Send each fee to the fee receiver
-        uint256 token0Amount = pool.feeToken0;
-        uint256 token1Amount = pool.feeToken1;
+        uint256 amount = protocolFees[token];
 
-        // Send each fee to the fee receiver if needed
-        if (token0Amount > 0) {
-            pool.feeToken0 = 0;
-            totalReservesOf[baseToken] -= token0Amount;
-            baseToken.safeTransfer(feeReceiver, token0Amount);
-        }
+        // Direct exit if no amount to claim
+        if (amount == 0) return ptr;
 
-        if (token1Amount > 0) {
-            pool.feeToken1 = 0;
-            totalReservesOf[token] -= token1Amount;
-            token.safeTransfer(feeReceiver, token1Amount);
-        }
+        // Transfer the funds
+        protocolFees[token] = 0;
+        totalReservesOf[token] -= amount;
+        token.safeTransfer(feeReceiver, amount);
 
         return ptr;
     }
@@ -435,14 +435,12 @@ contract MonoTokenPool is ReentrancyGuard {
     function getPool(address token)
         external
         view
-        returns (uint128 reserves0, uint128 reserves1, uint256 totalLiquidity, uint128 feeToken0, uint128 feeToken1)
+        returns (uint128 reserves0, uint128 reserves1, uint256 totalLiquidity)
     {
         Pool storage pool = _getPool(token);
         reserves0 = pool.reserves0;
         reserves1 = pool.reserves1;
         totalLiquidity = pool.totalLiquidity;
-        feeToken0 = pool.feeToken0;
-        feeToken1 = pool.feeToken1;
     }
 
     /// @dev Returns the position for the given 'token' and 'owner'.

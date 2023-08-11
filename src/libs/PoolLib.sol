@@ -10,8 +10,6 @@ struct Pool {
     mapping(address => uint256) positions;
     uint128 reserves0;
     uint128 reserves1;
-    uint128 feeToken0;
-    uint128 feeToken1;
 }
 
 using PoolLib for Pool global;
@@ -60,12 +58,10 @@ library PoolLib {
      */
     function swap(Pool storage self, bool zeroForOne, uint256 amount, uint256 fee, uint256 protocolFee)
         internal
-        returns (int256 delta0, int256 delta1)
+        returns (int256 delta0, int256 delta1, uint256 protocolFeeToken0, uint256 protocolFeeToken1)
     {
         uint256 newReserves0;
         uint256 newReserves1;
-        uint256 protocolFeeToken0;
-        uint256 protocolFeeToken1;
 
         (newReserves0, newReserves1, delta0, delta1, protocolFeeToken0, protocolFeeToken1) =
             SwapLib.swap(self.reserves0, self.reserves1, zeroForOne, amount, fee, protocolFee);
@@ -73,13 +69,6 @@ library PoolLib {
         // Update the reserve of the pool
         self.reserves0 = newReserves0.toUint128();
         self.reserves1 = newReserves1.toUint128();
-
-        // Increase the protocol fee on the swap pool, depending on the direction of the swap
-        if (protocolFeeToken0 > 0) {
-            self.feeToken0 = (self.feeToken0 + protocolFeeToken0).toUint128();
-        } else {
-            self.feeToken1 = (self.feeToken1 + protocolFeeToken1).toUint128();
-        }
     }
 
     /**
