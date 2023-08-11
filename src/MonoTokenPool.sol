@@ -24,8 +24,8 @@ contract MonoTokenPool is ReentrancyGuard {
     using SafeCastLib for uint256;
     using OpDecoderLib for uint256;
 
-    /// @dev Native token address placeholder
-    address private constant NATIVE_ADDRESS = address(0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE);
+    /// @dev The max swap fee (5%)
+    uint256 private constant MAX_SWAP_FEE = 50;
 
     /* -------------------------------------------------------------------------- */
     /*                                   Storage                                  */
@@ -36,6 +36,12 @@ contract MonoTokenPool is ReentrancyGuard {
 
     /// @dev The base token we will use for all the pools
     address private immutable baseToken;
+
+    /// @dev The fee that will be taken from each swaps
+    uint16 private swapFeePerThousands;
+
+    /// @dev The receiver for the swap fees
+    address private feeReceiver;
 
     /// @dev The mapping of all the pools per target token
     mapping(address token => Pool pool) internal pools;
@@ -53,12 +59,17 @@ contract MonoTokenPool is ReentrancyGuard {
     error NegativeAmount();
     error NegativeReceive();
     error AmountOutsideBounds();
+    error NotCurrentFeeReceiver();
 
-    constructor(address token, uint256 feeBps) {
+    constructor(address token, uint256 feeBps, address _feeReceiver, uint16 _swapFeePerThousands) {
         require(feeBps < BPS);
         require(token != address(0));
+        require(_feeReceiver != address(0));
+        require(_swapFeePerThousands <= MAX_SWAP_FEE);
         FEE_BPS = feeBps;
         baseToken = token;
+        feeReceiver = _feeReceiver;
+        swapFeePerThousands = _swapFeePerThousands;
     }
 
     /**
@@ -72,6 +83,25 @@ contract MonoTokenPool is ReentrancyGuard {
     /* -------------------------------------------------------------------------- */
     /*                           External write method's                          */
     /* -------------------------------------------------------------------------- */
+
+    /**
+     * @notice Update the fee receiver and the fee amount
+     * @param _feeReceiver The new fee receiver
+     * @param _swapFeePerThousands The new fee amount per thousand
+     * @dev Only the current fee receiver can update the fee receiver and the amount
+     */
+    function updateFeeReceiver(address _feeReceiver, uint16 _swapFeePerThousands) external {
+        if (feeReceiver != msg.sender) revert NotCurrentFeeReceiver();
+
+        require(_swapFeePerThousands <= MAX_SWAP_FEE);
+
+        if (_feeReceiver == address(0)) {
+            require(_swapFeePerThousands == 0);
+        }
+
+        feeReceiver = _feeReceiver;
+        swapFeePerThousands = _swapFeePerThousands;
+    }
 
     /**
      * @notice Execute a program of operations on pools. The `program` is a serialized list of operations, encoded in a specific format.
@@ -146,7 +176,15 @@ contract MonoTokenPool is ReentrancyGuard {
         bool zeroForOne = (op & Ops.SWAP_DIR) != 0;
         (ptr, amount) = ptr.readUint(16);
 
-        (int256 delta0, int256 delta1) = _getPool(token).swap(zeroForOne, amount, FEE_BPS);
+        // Get the deltas
+        int256 delta0;
+        int256 delta1;
+        // Take the fee if needed
+        if (swapFeePerThousands > 0) {
+            (delta0, delta1) = _getPool(token).swap(zeroForOne, amount, FEE_BPS, swapFeePerThousands);
+        } else {
+            (delta0, delta1) = _getPool(token).swap(zeroForOne, amount, FEE_BPS);
+        }
 
         state.tokenDeltas.accountChange(baseToken, delta0);
         state.tokenDeltas.accountChange(token, delta1);
@@ -367,12 +405,14 @@ contract MonoTokenPool is ReentrancyGuard {
     function getPool(address token)
         external
         view
-        returns (uint128 reserves0, uint128 reserves1, uint256 totalLiquidity)
+        returns (uint128 reserves0, uint128 reserves1, uint256 totalLiquidity, uint128 feeToken0, uint128 feeToken1)
     {
         Pool storage pool = _getPool(token);
         reserves0 = pool.reserves0;
         reserves1 = pool.reserves1;
         totalLiquidity = pool.totalLiquidity;
+        feeToken0 = pool.feeToken0;
+        feeToken1 = pool.feeToken1;
     }
 
     /// @dev Returns the position for the given 'token' and 'owner'.

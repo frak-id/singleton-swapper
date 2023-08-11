@@ -41,7 +41,10 @@ contract MonoTokenNativePool is Test {
     function setUp() public {
         baseToken = _newToken("baseToken");
         wNativeToken = _newWrappedNativeToken("wrappedNativeToken");
-        pool = new MonoTokenPool(address(baseToken), bps);
+        pool = new MonoTokenPool(address(baseToken), bps, address(13), 20);
+
+        vm.prank(address(13));
+        pool.updateFeeReceiver(address(0), 0);
 
         // Create a liquidity provider user
         liquidityProvider = address(_newUser("liquidityProvider"));
@@ -288,10 +291,13 @@ contract MonoTokenNativePool is Test {
     }
 
     function _postSwapReserveLog() internal view {
-        (uint128 reserves0, uint128 reserves1, uint256 totalLiquidity) = pool.getPool(address(wNativeToken));
+        (uint128 reserves0, uint128 reserves1, uint256 totalLiquidity, uint128 feeToken0, uint128 feeToken1) =
+            pool.getPool(address(wNativeToken));
         console.log("- Pool");
         console.log(" - reserves0: %s", reserves0);
         console.log(" - reserves1: %s", reserves1);
+        console.log(" - feeToken0: %s", feeToken0);
+        console.log(" - feeToken1: %s", feeToken1);
         console.log(" - totalLiquidity: %s", totalLiquidity);
     }
 

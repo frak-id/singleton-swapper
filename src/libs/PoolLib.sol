@@ -10,6 +10,8 @@ struct Pool {
     mapping(address => uint256) positions;
     uint128 reserves0;
     uint128 reserves1;
+    uint128 feeToken0;
+    uint128 feeToken1;
 }
 
 using PoolLib for Pool global;
@@ -28,7 +30,7 @@ library PoolLib {
      * @param self The pool
      * @param zeroForOne Whether to swap token0 for token1 or token1 for token0
      * @param amount The amount of token0 or token1 to swap
-     * @param fee The fee to charge
+     * @param fee The fee to charge for the liquidity providers
      * @return delta0 The amount of token0 swapped
      * @return delta1 The amount of token1 swapped
      */
@@ -40,8 +42,44 @@ library PoolLib {
         uint256 newReserves1;
         (newReserves0, newReserves1, delta0, delta1) =
             SwapLib.swap(self.reserves0, self.reserves1, zeroForOne, amount, fee);
+
+        // Update the reserve of the pool
         self.reserves0 = newReserves0.toUint128();
         self.reserves1 = newReserves1.toUint128();
+    }
+
+    /**
+     * @dev Swap tokens in the pool
+     * @param self The pool
+     * @param zeroForOne Whether to swap token0 for token1 or token1 for token0
+     * @param amount The amount of token0 or token1 to swap
+     * @param fee The fee to charge for the liquidity providers
+     * @param protocolFee The fee to charge for the protocol
+     * @return delta0 The amount of token0 swapped
+     * @return delta1 The amount of token1 swapped
+     */
+    function swap(Pool storage self, bool zeroForOne, uint256 amount, uint256 fee, uint256 protocolFee)
+        internal
+        returns (int256 delta0, int256 delta1)
+    {
+        uint256 newReserves0;
+        uint256 newReserves1;
+        uint256 protocolFeeToken0;
+        uint256 protocolFeeToken1;
+
+        (newReserves0, newReserves1, delta0, delta1, protocolFeeToken0, protocolFeeToken1) =
+            SwapLib.swap(self.reserves0, self.reserves1, zeroForOne, amount, fee, protocolFee);
+
+        // Update the reserve of the pool
+        self.reserves0 = newReserves0.toUint128();
+        self.reserves1 = newReserves1.toUint128();
+
+        // Increase the protocol fee on the swap pool, depending on the direction of the swap
+        if (protocolFeeToken0 > 0) {
+            self.feeToken0 = (self.feeToken0 + protocolFeeToken0).toUint128();
+        } else {
+            self.feeToken1 = (self.feeToken1 + protocolFeeToken1).toUint128();
+        }
     }
 
     /**

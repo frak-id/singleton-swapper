@@ -13,7 +13,7 @@ import {ERC20} from "openzeppelin/token/ERC20/ERC20.sol";
 /// @title MonoTokenPoolBpsTest
 /// @author KONFeature <https://github.com/KONFeature>
 /// @notice Test contract for MonoTokenPool with a BPS value
-contract MonoTokenPoolBpsTest is Test {
+contract MonoTokenPoolFeeTest is Test {
     using SafeTransferLib for address;
     using BaseEncoderLib for bytes;
     using MonoOpEncoderLib for bytes;
@@ -27,7 +27,10 @@ contract MonoTokenPoolBpsTest is Test {
 
     function setUp() public {
         baseToken = _newToken("baseToken");
-        pool = new MonoTokenPool(address(baseToken), bps);
+        pool = new MonoTokenPool(address(baseToken), bps, address(13), 20);
+
+        vm.prank(address(13));
+        pool.updateFeeReceiver(address(0), 0);
     }
 
     /**
@@ -101,7 +104,7 @@ contract MonoTokenPoolBpsTest is Test {
     }
 
     function _swap0to1(address token, address user, uint256 toSwap) internal {
-        (uint128 reserves0, uint128 reserves1,) = pool.getPool(token);
+        (uint128 reserves0, uint128 reserves1,,,) = pool.getPool(token);
 
         // Perform a second swap
         uint256 inAmount = toSwap;
@@ -134,7 +137,7 @@ contract MonoTokenPoolBpsTest is Test {
     }
 
     function _swap1to0(address token, address user, uint256 toSwap) internal {
-        (uint128 reserves0, uint128 reserves1,) = pool.getPool(token);
+        (uint128 reserves0, uint128 reserves1,,,) = pool.getPool(token);
 
         // Perform a second swap
         uint256 inAmount = toSwap;
@@ -172,10 +175,13 @@ contract MonoTokenPoolBpsTest is Test {
     }
 
     function _postSwapReserveLog(address token) internal view {
-        (uint128 reserves0, uint128 reserves1, uint256 totalLiquidity) = pool.getPool(token);
+        (uint128 reserves0, uint128 reserves1, uint256 totalLiquidity, uint128 feeToken0, uint128 feeToken1) =
+            pool.getPool(token);
         console.log("=== Pool ===");
         console.log("reserves0: %s", reserves0);
         console.log("reserves1: %s", reserves1);
+        console.log("feeToken0: %s", feeToken0);
+        console.log("feeToken1: %s", feeToken1);
         console.log("totalLiquidity: %s", totalLiquidity);
     }
 
