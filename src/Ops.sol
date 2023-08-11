@@ -33,6 +33,9 @@ library Ops {
     /// @dev Permit token withdraw via EIP-2612 signature
     uint256 internal constant PERMIT_VIA_SIG = 0xB0;
 
+    /// @dev Claim all the fees available
+    uint256 internal constant CLAIM_ALL_FEES = 0xC0;
+
     /// @dev The minimum amount of token for the `ALL` operations
     uint256 internal constant ALL_MIN_BOUND = 0x01;
     /// @dev The maximum amount of token for the `ALL` operations

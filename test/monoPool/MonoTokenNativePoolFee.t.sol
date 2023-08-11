@@ -34,6 +34,9 @@ contract MonoTokenNativePoolFeeTest is Test {
     /// @dev Our liquidity provider user
     address private liquidityProvider;
 
+    /// @dev The fee receiver
+    address private feeReceiver;
+
     /// @dev The permit typehash
     bytes32 private constant _PERMIT_TYPEHASH =
         keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
@@ -41,10 +44,15 @@ contract MonoTokenNativePoolFeeTest is Test {
     function setUp() public {
         baseToken = _newToken("baseToken");
         wNativeToken = _newWrappedNativeToken("wrappedNativeToken");
-        pool = new MonoTokenPool(address(baseToken), bps, address(13), 20);
 
         // Create a liquidity provider user
         liquidityProvider = address(_newUser("liquidityProvider"));
+
+        // Create a fee receiver
+        feeReceiver = address(_newUser("feeReceiver"));
+
+        // Create the pool
+        pool = new MonoTokenPool(address(baseToken), bps, feeReceiver, 20);
 
         // Create the initial pool
         _createPoolAndAddLiquidity();
@@ -210,8 +218,8 @@ contract MonoTokenNativePoolFeeTest is Test {
         vm.prank(swapUser);
         pool.execute{value: amountToSwap}(program);
 
-        // Print final pool state
-        console.log("=== Final Pool State ===");
+        // Print post swap pool state
+        console.log("=== Post swap State ===");
         _postSwapReserveLog();
         _postSwapBalanceLog(swapUser);
 
@@ -220,6 +228,20 @@ contract MonoTokenNativePoolFeeTest is Test {
         // Ensure the user has received the base token, but the fees are taken
         assertGt(baseToken.balanceOf(swapUser), 0);
         assertLt(baseToken.balanceOf(swapUser), amountToSwap);
+
+        console.log("=== Pre fee claim State ===");
+        _postSwapReserveLog();
+        _postSwapBalanceLog(feeReceiver);
+
+        // Try to claim the fees for our protocol
+        program = BaseEncoderLib.init(1).appendClaimFees(address(wNativeToken), feeReceiver).done();
+        vm.prank(feeReceiver);
+        pool.execute(program);
+
+        // Print post swap pool state
+        console.log("=== Post fee claim State ===");
+        _postSwapReserveLog();
+        _postSwapBalanceLog(feeReceiver);
     }
 
     /// @dev Test the swap method with native token
@@ -294,6 +316,11 @@ contract MonoTokenNativePoolFeeTest is Test {
         console.log(" - feeToken0: %s", feeToken0);
         console.log(" - feeToken1: %s", feeToken1);
         console.log(" - totalLiquidity: %s", totalLiquidity);
+        console.log("- Contract");
+        console.log(" - balanceOf0Cont: %s", pool.totalReservesOf(address(baseToken)));
+        console.log(" - balanceOf0Real: %s", baseToken.balanceOf(address(pool)));
+        console.log(" - balanceOf1Cont: %s", pool.totalReservesOf(address(wNativeToken)));
+        console.log(" - balanceOf1Real: %s", wNativeToken.balanceOf(address(pool)));
     }
 
     function _postSwapBalanceLog(address user) internal view {

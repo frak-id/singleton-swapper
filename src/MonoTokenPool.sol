@@ -162,6 +162,8 @@ contract MonoTokenPool is ReentrancyGuard {
             ptr = _addLiquidity(state, ptr);
         } else if (mop == Ops.RM_LIQ) {
             ptr = _removeLiquidity(state, ptr);
+        } else if (mop == Ops.CLAIM_ALL_FEES) {
+            ptr = _claimAllFees(ptr);
         } else {
             revert InvalidOp(op);
         }
@@ -395,6 +397,39 @@ contract MonoTokenPool is ReentrancyGuard {
 
         state.tokenDeltas.accountChange(token, -totalReceived.toInt256());
         totalReservesOf[token] = directBalance;
+    }
+
+    function _claimAllFees(uint256 ptr) internal returns (uint256) {
+        address token;
+        address to;
+
+        (ptr, token) = ptr.readAddress();
+        (ptr, to) = ptr.readAddress();
+
+        // Ensure to is the fee receiver
+        if (to != feeReceiver) revert NotCurrentFeeReceiver();
+
+        // Get the pool, and thus the amount to claim
+        Pool storage pool = _getPool(token);
+
+        // Send each fee to the fee receiver
+        uint256 token0Amount = pool.feeToken0;
+        uint256 token1Amount = pool.feeToken1;
+
+        // Send each fee to the fee receiver
+        if (token0Amount > 0) {
+            pool.feeToken0 = 0;
+            totalReservesOf[baseToken] -= token0Amount;
+            baseToken.safeTransfer(to, token0Amount);
+        }
+
+        if (token1Amount > 0) {
+            pool.feeToken1 = 0;
+            totalReservesOf[token] -= token1Amount;
+            token.safeTransfer(to, token1Amount);
+        }
+
+        return ptr;
     }
 
     /* -------------------------------------------------------------------------- */
