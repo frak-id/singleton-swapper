@@ -234,7 +234,7 @@ contract MonoTokenNativePoolFeeTest is Test {
         _postSwapBalanceLog(feeReceiver);
 
         // Try to claim the fees for our protocol
-        program = BaseEncoderLib.init(1).appendClaimFees(address(wNativeToken), feeReceiver).done();
+        program = BaseEncoderLib.init(1).appendClaimFees(address(wNativeToken)).done();
         vm.prank(feeReceiver);
         pool.execute(program);
 
