@@ -319,9 +319,7 @@ contract MonoTokenNativePoolFeeTest is Test {
         console.log(" - reserves1: %s", reserves1);
         console.log(" - totalLiquidity: %s", totalLiquidity);
         console.log("- Contract");
-        console.log(" - balanceOf0Cont: %s", pool.totalReservesOf(address(baseToken)));
         console.log(" - balanceOf0Real: %s", baseToken.balanceOf(address(pool)));
-        console.log(" - balanceOf1Cont: %s", pool.totalReservesOf(address(wNativeToken)));
         console.log(" - balanceOf1Real: %s", wNativeToken.balanceOf(address(pool)));
     }
 

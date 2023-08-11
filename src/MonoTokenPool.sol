@@ -27,6 +27,14 @@ contract MonoTokenPool is ReentrancyGuard {
     /// @dev The max swap fee (5%)
     uint256 private constant MAX_SWAP_FEE = 50;
 
+    /**
+     * @dev The token state to handle reserves & protocol fees
+     */
+    struct TokenState {
+        uint256 totalReserves;
+        uint256 protocolFees;
+    }
+
     /* -------------------------------------------------------------------------- */
     /*                                   Storage                                  */
     /* -------------------------------------------------------------------------- */
@@ -46,11 +54,8 @@ contract MonoTokenPool is ReentrancyGuard {
     /// @dev The mapping of all the pools per target token
     mapping(address token => Pool pool) internal pools;
 
-    /// @dev The mapping of our reserves per tokens
-    mapping(address token => uint256 totalReserve) public totalReservesOf;
-
-    /// @dev The mapping of our reserves per tokens
-    mapping(address token => uint256 pendingFees) public protocolFees;
+    /// @dev The current token state
+    mapping(address token => TokenState tokenState) public tokenStates;
 
     /* -------------------------------------------------------------------------- */
     /*                               Custom error's                               */
@@ -191,8 +196,8 @@ contract MonoTokenPool is ReentrancyGuard {
             (delta0, delta1, protocolFeeToken0, protocolFeeToken1) =
                 _getPool(token).swap(zeroForOne, amount, FEE_BPS, swapFeePerThousands);
 
-            protocolFees[baseToken] += protocolFeeToken0;
-            protocolFees[token] += protocolFeeToken1;
+            tokenStates[baseToken].protocolFees += protocolFeeToken0;
+            tokenStates[token].protocolFees += protocolFeeToken1;
         } else {
             (delta0, delta1) = _getPool(token).swap(zeroForOne, amount, FEE_BPS);
         }
@@ -246,7 +251,7 @@ contract MonoTokenPool is ReentrancyGuard {
 
         state.tokenDeltas.accountChange(token, amount.toInt256());
         token.safeTransfer(to, amount);
-        totalReservesOf[token] -= amount;
+        tokenStates[token].totalReserves -= amount;
 
         return ptr;
     }
@@ -291,7 +296,7 @@ contract MonoTokenPool is ReentrancyGuard {
         if (amount < minSend || amount > maxSend) revert AmountOutsideBounds();
 
         (ptr, to) = ptr.readAddress();
-        totalReservesOf[token] -= amount;
+        tokenStates[token].totalReserves -= amount;
         token.safeTransfer(to, amount);
 
         return ptr;
@@ -316,7 +321,7 @@ contract MonoTokenPool is ReentrancyGuard {
 
         (ptr, to) = ptr.readAddress();
         // Decrease the reserve
-        totalReservesOf[token] -= amount;
+        tokenStates[token].totalReserves -= amount;
         // Withdraw the amount of token from the wrapped token
         IWrappedNativeToken(token).withdraw(amount);
         // Transfer the token
@@ -400,12 +405,12 @@ contract MonoTokenPool is ReentrancyGuard {
     }
 
     function _accountReceived(State memory state, address token) internal {
-        uint256 reserves = totalReservesOf[token];
+        uint256 reserves = tokenStates[token].totalReserves;
         uint256 directBalance = token.balanceOf(address(this));
         uint256 totalReceived = directBalance - reserves;
 
         state.tokenDeltas.accountChange(token, -totalReceived.toInt256());
-        totalReservesOf[token] = directBalance;
+        tokenStates[token].totalReserves = directBalance;
     }
 
     function _claimAllFees(uint256 ptr) internal returns (uint256) {
@@ -414,14 +419,15 @@ contract MonoTokenPool is ReentrancyGuard {
         (ptr, token) = ptr.readAddress();
 
         // Send each fee to the fee receiver
-        uint256 amount = protocolFees[token];
+        TokenState storage tokenState = tokenStates[token];
+        uint256 amount = tokenState.protocolFees;
 
         // Direct exit if no amount to claim
         if (amount == 0) return ptr;
 
         // Transfer the funds
-        protocolFees[token] = 0;
-        totalReservesOf[token] -= amount;
+        tokenState.protocolFees = 0;
+        tokenState.totalReserves -= amount;
         token.safeTransfer(feeReceiver, amount);
 
         return ptr;
